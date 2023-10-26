@@ -1,0 +1,12 @@
+conda install -c anaconda pyaudio
+conda install pytorch==2.0.0 torchvision==0.15.0 torchaudio==2.0.0 pytorch-cuda=11.7 -c pytorch -c nvidia
+conda install -c fvcore -c iopath -c conda-forge fvcore iopath
+pip install scikit-image matplotlib imageio plotly opencv-python
+pip install black usort flake8 flake8-bugbear flake8-comprehensions
+pip install --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py310_cu117_pyt200/download.html
+
+pip install scikit-learn
+
+pip uninstall torch mpmath
+pip install torch mpmath
+
