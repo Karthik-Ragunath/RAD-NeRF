@@ -8,6 +8,7 @@ from torch.cuda.amp import custom_bwd, custom_fwd
 
 try:
     import _raymarching_face as _backend
+    print("Raymarching import happened")
 except ImportError:
     from .backend import _backend
 

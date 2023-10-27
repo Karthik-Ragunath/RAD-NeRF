@@ -228,7 +228,7 @@ class NeRFRenderer(nn.Module):
             
             weights_sum = torch.zeros(N, dtype=dtype, device=device)
             depth = torch.zeros(N, dtype=dtype, device=device)
-            image = torch.zeros(N, 3, dtype=dtype, device=device)
+            image = torch.zeros(N, 3, dtype=dtype, device=device) # torch.Size([202500, 3])
             
             n_alive = N
             rays_alive = torch.arange(n_alive, dtype=torch.int32, device=device) # [N]
@@ -249,14 +249,14 @@ class NeRFRenderer(nn.Module):
                 n_step = max(min(N // n_alive, 8), 1)
 
                 xyzs, dirs, deltas = raymarching.march_rays(n_alive, n_step, rays_alive, rays_t, rays_o, rays_d, self.bound, self.density_bitfield, self.cascade, self.grid_size, nears, fars, 128, perturb if step == 0 else False, dt_gamma, max_steps)
-
+                # torch.Size([202624, 3]), torch.Size([202624, 3]), torch.Size([202624, 2])
                 sigmas, rgbs, ambient = self(xyzs, dirs, enc_a, ind_code, eye)
-                sigmas = self.density_scale * sigmas
+                sigmas = self.density_scale * sigmas # torch.Size([202624]), rgs - torch.Size([202624, 3])
 
                 raymarching.composite_rays(n_alive, n_step, rays_alive, rays_t, sigmas, rgbs, deltas, weights_sum, depth, image, T_thresh)
 
-                rays_alive = rays_alive[rays_alive >= 0]
-
+                rays_alive = rays_alive[rays_alive >= 0] # torch.Size([63206]) # torch.Size([59030])
+ 
                 # print(f'step = {step}, n_step = {n_step}, n_alive = {n_alive}, xyzs: {xyzs.shape}')
 
                 step += n_step
@@ -273,7 +273,7 @@ class NeRFRenderer(nn.Module):
                     ind_code_torso = self.individual_codes_torso[index]
                 # use a fixed ind code for the unknown test data.
                 else:
-                    ind_code_torso = self.individual_codes_torso[0]
+                    ind_code_torso = self.individual_codes_torso[0] # torch.Size([8])
             else:
                 ind_code_torso = None
             
@@ -303,12 +303,12 @@ class NeRFRenderer(nn.Module):
 
             # print(torso_alpha.shape, torso_alpha.max().item(), torso_alpha.min().item())
 
-        image = image + (1 - weights_sum).unsqueeze(-1) * bg_color
-        image = image.view(*prefix, 3)
+        image = image + (1 - weights_sum).unsqueeze(-1) * bg_color # torch.Size([1, 202500, 3])
+        image = image.view(*prefix, 3) # torch.Size([1, 202500, 3])
         image = image.clamp(0, 1)
 
-        depth = torch.clamp(depth - nears, min=0) / (fars - nears)
-        depth = depth.view(*prefix)
+        depth = torch.clamp(depth - nears, min=0) / (fars - nears) # torch.Size([202500]) # fars, nears - torch.Size([202500])
+        depth = depth.view(*prefix) # torch.Size([1, 202500])
         
         results['depth'] = depth
         results['image'] = image # head_image if train, else com_image

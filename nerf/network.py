@@ -235,51 +235,51 @@ class NeRFNetwork(NeRFRenderer):
             enc_w = self.encoder_ambient(ambient, bound=1)
         else:
             
-            enc_a = enc_a.repeat(x.shape[0], 1) 
-            enc_x = self.encoder(x, bound=self.bound)
+            enc_a = enc_a.repeat(x.shape[0], 1) # torch.Size([202624, 64]) # audio_encoder
+            enc_x = self.encoder(x, bound=self.bound) # torch.Size([202624, 32]) # self.bound = 1
 
             # ender.record(); torch.cuda.synchronize(); curr_time = starter.elapsed_time(ender); print(f"enocoder_deform = {curr_time}"); starter.record()
 
             # ambient
-            ambient = torch.cat([enc_x, enc_a], dim=1)
-            ambient = self.ambient_net(ambient).float()
-            ambient = torch.tanh(ambient) # map to [-1, 1]
+            ambient = torch.cat([enc_x, enc_a], dim=1) # torch.Size([202624, 96])
+            ambient = self.ambient_net(ambient).float() # torch.Size([202624, 2])
+            ambient = torch.tanh(ambient) # map to [-1, 1] # torch.Size([202624, 2])
 
             # ender.record(); torch.cuda.synchronize(); curr_time = starter.elapsed_time(ender); print(f"de-an net = {curr_time}"); starter.record()
 
             # sigma
-            enc_w = self.encoder_ambient(ambient, bound=1)
+            enc_w = self.encoder_ambient(ambient, bound=1) # torch.Size([202624, 32])
 
         # ender.record(); torch.cuda.synchronize(); curr_time = starter.elapsed_time(ender); print(f"encoder = {curr_time}"); starter.record()
 
         if e is not None:
-            h = torch.cat([enc_x, enc_w, e.repeat(x.shape[0], 1)], dim=-1)
+            h = torch.cat([enc_x, enc_w, e.repeat(x.shape[0], 1)], dim=-1) # torch.Size([202624, 65])
         else:
             h = torch.cat([enc_x, enc_w], dim=-1)
 
-        h = self.sigma_net(h)
+        h = self.sigma_net(h) # torch.Size([202624, 65])
 
         # ender.record(); torch.cuda.synchronize(); curr_time = starter.elapsed_time(ender); print(f"sigma_net = {curr_time}"); starter.record()
-        sigma = trunc_exp(h[..., 0])
-        geo_feat = h[..., 1:]
+        sigma = trunc_exp(h[..., 0]) # torch.Size([202624])
+        geo_feat = h[..., 1:] # torch.Size([202624, 64])
 
         # color
-        enc_d = self.encoder_dir(d)
+        enc_d = self.encoder_dir(d) # torch.Size([202624, 16])
 
         # ender.record(); torch.cuda.synchronize(); curr_time = starter.elapsed_time(ender); print(f"encoder_dir = {curr_time}"); starter.record()
 
         if c is not None:
-            h = torch.cat([enc_d, geo_feat, c.repeat(x.shape[0], 1)], dim=-1)
+            h = torch.cat([enc_d, geo_feat, c.repeat(x.shape[0], 1)], dim=-1) # torch.Size([202624, 84])
         else:
             h = torch.cat([enc_d, geo_feat], dim=-1)
         
-        h = self.color_net(h)
+        h = self.color_net(h) # torch.Size([202624, 3])
         # ender.record(); torch.cuda.synchronize(); curr_time = starter.elapsed_time(ender); print(f"color_net = {curr_time}"); starter.record()
         
         # sigmoid activation for rgb
-        color = torch.sigmoid(h)
+        color = torch.sigmoid(h) # torch.Size([202624, 3])
 
-        return sigma, color, ambient
+        return sigma, color, ambient # ambient - torch.Size([202624, 2])
 
 
     def density(self, x, enc_a, e=None):

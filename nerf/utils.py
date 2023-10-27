@@ -862,8 +862,8 @@ class Trainer(object):
 
         outputs = self.model.render(rays_o, rays_d, auds, bg_coords, poses, eye=eye, index=index, staged=True, bg_color=bg_color, perturb=perturb, **vars(self.opt))
 
-        pred_rgb = outputs['image'].reshape(-1, H, W, 3)
-        pred_depth = outputs['depth'].reshape(-1, H, W)
+        pred_rgb = outputs['image'].reshape(-1, H, W, 3) # H, W - 450 # torch.Size([1, 450, 450, 3])
+        pred_depth = outputs['depth'].reshape(-1, H, W) # torch.Size([1, 450, 450])
 
         return pred_rgb, pred_depth
 
@@ -942,7 +942,7 @@ class Trainer(object):
             for i, data in enumerate(loader):
                 
                 with torch.cuda.amp.autocast(enabled=self.fp16):
-                    preds, preds_depth = self.test_step(data)                
+                    preds, preds_depth = self.test_step(data) # torch.Size([1, 450, 450, 3]) # torch.Size([1, 450, 450])       
                 
                 path = os.path.join(save_path, f'{name}_{i:04d}_rgb.png')
                 path_depth = os.path.join(save_path, f'{name}_{i:04d}_depth.png')
