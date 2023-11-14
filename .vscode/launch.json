@@ -1,0 +1,29 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Test",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/test.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--pose", "data/obama.json",
+                "--ckpt", "pretrained/obama_eo.pth",
+                "--aud", "data/intro_eo.npy",
+                "--workspace", "trial_obama/",
+                "-O", 
+                "--torso"
+            ],
+            "env": {
+                "PYTHONPATH": "$PYTHONPATH:/home/kxa200005/github/RAD-NeRF",
+                // "LD_LIBRARY_PATH": "/home/kxa200005/anaconda3/lib",
+                "LD_LIBRARY_PATH": "/home/kxa200005/anaconda3/envs/rad_nerf_updated/lib"
+            }
+        }
+    ]
+}

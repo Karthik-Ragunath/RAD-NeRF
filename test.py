@@ -145,8 +145,8 @@ if __name__ == '__main__':
     test_loader = NeRFDataset_Test(opt, device=device).dataloader()
 
     # temp fix: for update_extra_states
-    model.aud_features = test_loader._data.auds
-    model.eye_areas = test_loader._data.eye_area
+    model.aud_features = test_loader._data.auds # torch.Size([588, 44, 16])
+    model.eye_areas = test_loader._data.eye_area # torch.Size([7272, 1])
 
     if opt.gui:
         # we still need test_loader to provide audio features for testing.

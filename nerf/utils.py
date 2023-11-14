@@ -923,16 +923,16 @@ class Trainer(object):
     def test(self, loader, save_path=None, name=None, write_image=False):
 
         if save_path is None:
-            save_path = os.path.join(self.workspace, 'results')
+            save_path = os.path.join(self.workspace, 'results') # 'trial_obama/results'
 
         if name is None:
-            name = f'{self.name}_ep{self.epoch:04d}'
+            name = f'{self.name}_ep{self.epoch:04d}' # 'ngp_ep0028'
 
         os.makedirs(save_path, exist_ok=True)
         
         self.log(f"==> Start Test, save results to {save_path}")
 
-        pbar = tqdm.tqdm(total=len(loader) * loader.batch_size, bar_format='{percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
+        pbar = tqdm.tqdm(total=len(loader) * loader.batch_size, bar_format='{percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]') # 588 * 1 = 588
         self.model.eval()
 
         all_preds = []

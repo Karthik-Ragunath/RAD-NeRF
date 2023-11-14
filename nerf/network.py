@@ -10,8 +10,8 @@ from .renderer import NeRFRenderer
 class AudioAttNet(nn.Module):
     def __init__(self, dim_aud=64, seq_len=8):
         super(AudioAttNet, self).__init__()
-        self.seq_len = seq_len
-        self.dim_aud = dim_aud
+        self.seq_len = seq_len # 8
+        self.dim_aud = dim_aud # 64
         self.attentionConvNet = nn.Sequential(  # b x subspace_dim x seq_len
             nn.Conv1d(self.dim_aud, 16, kernel_size=3, stride=1, padding=1, bias=True),
             nn.LeakyReLU(0.02, True),
@@ -41,8 +41,8 @@ class AudioAttNet(nn.Module):
 class AudioNet(nn.Module):
     def __init__(self, dim_in=29, dim_aud=64, win_size=16):
         super(AudioNet, self).__init__()
-        self.win_size = win_size
-        self.dim_aud = dim_aud
+        self.win_size = win_size # 16
+        self.dim_aud = dim_aud # dim_aud = 64 # dim_in = 44
         self.encoder_conv = nn.Sequential(  # n x 29 x 16
             nn.Conv1d(dim_in, 32, kernel_size=3, stride=2, padding=1, bias=True),  # n x 32 x 8
             nn.LeakyReLU(0.02, True),
@@ -69,10 +69,10 @@ class AudioNet(nn.Module):
 class MLP(nn.Module):
     def __init__(self, dim_in, dim_out, dim_hidden, num_layers):
         super().__init__()
-        self.dim_in = dim_in
-        self.dim_out = dim_out
-        self.dim_hidden = dim_hidden
-        self.num_layers = num_layers
+        self.dim_in = dim_in # 96
+        self.dim_out = dim_out # 2
+        self.dim_hidden = dim_hidden # 64
+        self.num_layers = num_layers # 3
 
         net = []
         for l in range(num_layers):
@@ -119,52 +119,52 @@ class NeRFNetwork(NeRFRenderer):
             self.audio_in_dim = 32
             
         if self.emb:
-            self.embedding = nn.Embedding(self.audio_in_dim, self.audio_in_dim)
+            self.embedding = nn.Embedding(self.audio_in_dim, self.audio_in_dim) # 44, 44
 
         # audio network
         self.audio_dim = audio_dim    
-        self.audio_net = AudioNet(self.audio_in_dim, self.audio_dim)
+        self.audio_net = AudioNet(self.audio_in_dim, self.audio_dim) # 44, 64
 
-        self.att = self.opt.att
-        if self.att > 0:
-            self.audio_att_net = AudioAttNet(self.audio_dim)
+        self.att = self.opt.att # 2
+        if self.att > 0: # 2
+            self.audio_att_net = AudioAttNet(self.audio_dim) # 64
 
         # ambient network
-        self.encoder, self.in_dim = get_encoder('tiledgrid', input_dim=3, num_levels=16, level_dim=2, base_resolution=16, log2_hashmap_size=16, desired_resolution=2048 * self.bound, interpolation='linear')
-        self.encoder_ambient, self.in_dim_ambient = get_encoder('tiledgrid', input_dim=ambient_dim, num_levels=16, level_dim=2, base_resolution=16, log2_hashmap_size=16, desired_resolution=2048, interpolation='linear')
+        self.encoder, self.in_dim = get_encoder('tiledgrid', input_dim=3, num_levels=16, level_dim=2, base_resolution=16, log2_hashmap_size=16, desired_resolution=2048 * self.bound, interpolation='linear') # self.bound = 1 # GridEncoder, 32
+        self.encoder_ambient, self.in_dim_ambient = get_encoder('tiledgrid', input_dim=ambient_dim, num_levels=16, level_dim=2, base_resolution=16, log2_hashmap_size=16, desired_resolution=2048, interpolation='linear') # GridEncoder, 32
 
-        self.num_layers_ambient = num_layers_ambient
-        self.hidden_dim_ambient = hidden_dim_ambient
-        self.ambient_dim = ambient_dim
+        self.num_layers_ambient = num_layers_ambient # 3
+        self.hidden_dim_ambient = hidden_dim_ambient # 64
+        self.ambient_dim = ambient_dim # 2
 
-        self.ambient_net = MLP(self.in_dim + self.audio_dim, self.ambient_dim, self.hidden_dim_ambient, self.num_layers_ambient)
+        self.ambient_net = MLP(self.in_dim + self.audio_dim, self.ambient_dim, self.hidden_dim_ambient, self.num_layers_ambient) # 32 + 64 = 96, 2, 64, 3
 
         # sigma network
-        self.num_layers = num_layers
-        self.hidden_dim = hidden_dim
-        self.geo_feat_dim = geo_feat_dim
+        self.num_layers = num_layers # 3
+        self.hidden_dim = hidden_dim # 64
+        self.geo_feat_dim = geo_feat_dim # 64
 
-        self.eye_dim = 1 if self.exp_eye else 0
+        self.eye_dim = 1 if self.exp_eye else 0 # self.exp_eye = True
 
-        self.sigma_net = MLP(self.in_dim + self.in_dim_ambient + self.eye_dim, 1 + self.geo_feat_dim, self.hidden_dim, self.num_layers)
+        self.sigma_net = MLP(self.in_dim + self.in_dim_ambient + self.eye_dim, 1 + self.geo_feat_dim, self.hidden_dim, self.num_layers) # 65, 65, 64, 3
 
         # color network
-        self.num_layers_color = num_layers_color        
-        self.hidden_dim_color = hidden_dim_color
-        self.encoder_dir, self.in_dim_dir = get_encoder('spherical_harmonics')
+        self.num_layers_color = num_layers_color # 2
+        self.hidden_dim_color = hidden_dim_color # 64
+        self.encoder_dir, self.in_dim_dir = get_encoder('spherical_harmonics') # SHEncoder: input_dim=3 degree=4, 16
         
-        self.color_net = MLP(self.in_dim_dir + self.geo_feat_dim + self.individual_dim, 3, self.hidden_dim_color, self.num_layers_color)
+        self.color_net = MLP(self.in_dim_dir + self.geo_feat_dim + self.individual_dim, 3, self.hidden_dim_color, self.num_layers_color) # 84, 3, 64, 2
 
-        if self.torso:
+        if self.torso: # True
             # torso deform network
-            self.torso_deform_encoder, self.torso_deform_in_dim = get_encoder('frequency', input_dim=2, multires=10)
-            self.pose_encoder, self.pose_in_dim = get_encoder('frequency', input_dim=6, multires=4)
-            self.torso_deform_net = MLP(self.torso_deform_in_dim + self.pose_in_dim + self.individual_dim_torso, 2, 64, 3)
+            self.torso_deform_encoder, self.torso_deform_in_dim = get_encoder('frequency', input_dim=2, multires=10) # FreqEncoder: input_dim=2 degree=10 output_dim=42, 42
+            self.pose_encoder, self.pose_in_dim = get_encoder('frequency', input_dim=6, multires=4) # FreqEncoder: input_dim=6 degree=4 output_dim=54, 54
+            self.torso_deform_net = MLP(self.torso_deform_in_dim + self.pose_in_dim + self.individual_dim_torso, 2, 64, 3) # 104, 2, 64, 3
 
             # torso color network
-            self.torso_encoder, self.torso_in_dim = get_encoder('tiledgrid', input_dim=2, num_levels=16, level_dim=2, base_resolution=16, log2_hashmap_size=16, desired_resolution=2048, interpolation='linear')
+            self.torso_encoder, self.torso_in_dim = get_encoder('tiledgrid', input_dim=2, num_levels=16, level_dim=2, base_resolution=16, log2_hashmap_size=16, desired_resolution=2048, interpolation='linear') # GridEncoder, 32
             # self.torso_net = MLP(self.torso_in_dim + self.torso_deform_in_dim + self.pose_in_dim + self.individual_dim_torso + self.audio_dim, 4, 64, 3)
-            self.torso_net = MLP(self.torso_in_dim + self.torso_deform_in_dim + self.pose_in_dim + self.individual_dim_torso, 4, 32, 3)
+            self.torso_net = MLP(self.torso_in_dim + self.torso_deform_in_dim + self.pose_in_dim + self.individual_dim_torso, 4, 32, 3) # 136, 4, 32, 3
 
        
     def encode_audio(self, a):
