@@ -236,56 +236,56 @@ class NeRFDataset_Test:
         self.intrinsics = np.array([fl_x, fl_y, cx, cy]) # array([1200., 1200.,  225.,  225.])
 
         # directly build the coordinate meshgrid in [-1, 1]^2
-        self.bg_coords = get_bg_coords(self.H, self.W, self.device) # [1, H*W, 2] in [-1, 1]
+        self.bg_coords = get_bg_coords(self.H, self.W, self.device) # [1, H*W, 2] in [-1, 1] # torch.Size([1, 202500, 2]) # H, W = 450, 450
     
     def mirror_index(self, index):
-        size = self.poses.shape[0]
-        turn = index // size
-        res = index % size
+        size = self.poses.shape[0] # 7272
+        turn = index // size # 0; index = 0
+        res = index % size # 0
         if turn % 2 == 0:
-            return res
+            return res # 0
         else:
             return size - res - 1
 
     def collate(self, index):
 
-        B = len(index) # a list of length 1
+        B = len(index) # a list of length 1 # index = [0]
         # assert B == 1
 
         results = {}
 
         # audio use the original index
         if self.auds is not None:
-            auds = get_audio_features(self.auds, self.opt.att, index[0]).to(self.device)
-            results['auds'] = auds
+            auds = get_audio_features(self.auds, self.opt.att, index[0]).to(self.device) # torch.Size([588, 44, 16]), 2, 0 # torch.Size([8, 44, 16])
+            results['auds'] = auds # torch.Size([8, 44, 16])
 
         # head pose and bg image may mirror (replay --> <-- --> <--).
         index[0] = self.mirror_index(index[0])
 
-        poses = self.poses[index].to(self.device) # [B, 4, 4]
+        poses = self.poses[index].to(self.device) # [B, 4, 4] # torch.Size([1, 4, 4]), index = [0]
         
-        rays = get_rays(poses, self.intrinsics, self.H, self.W, self.num_rays, self.opt.patch_size)
-
-        results['index'] = index # for ind. code
-        results['H'] = self.H
-        results['W'] = self.W
-        results['rays_o'] = rays['rays_o']
-        results['rays_d'] = rays['rays_d']
+        rays = get_rays(poses, self.intrinsics, self.H, self.W, self.num_rays, self.opt.patch_size) # rays.keys() - dict_keys(['i', 'j', 'inds', 'rays_o', 'rays_d'])
+        # torch.Size([1, 4, 4]); self.intrinsics.shape = 4, array([1200., 1200.,  225.,  225.]); 450; 450; -1, 
+        results['index'] = index # for ind. code [0]
+        results['H'] = self.H # 450
+        results['W'] = self.W # 450
+        results['rays_o'] = rays['rays_o'] # torch.Size([1, 202500, 3])
+        results['rays_d'] = rays['rays_d'] # torch.Size([1, 202500, 3])
 
         if self.opt.exp_eye:
-            results['eye'] = self.eye_area[index].to(self.device) # [1]
+            results['eye'] = self.eye_area[index].to(self.device) # [1] # torch.Size([1, 1])
         else:
             results['eye'] = None
 
-        bg_img = self.bg_img.view(1, -1, 3).repeat(B, 1, 1).to(self.device)
+        bg_img = self.bg_img.view(1, -1, 3).repeat(B, 1, 1).to(self.device) # torch.Size([1, 202500, 3]) # B = 1 # self.bg_img.view(1, -1, 3).shape = torch.Size([1, 202500, 3])
 
-        results['bg_color'] = bg_img
+        results['bg_color'] = bg_img # torch.Size([1, 202500, 3])
 
-        bg_coords = self.bg_coords # [1, N, 2]
-        results['bg_coords'] = bg_coords
+        bg_coords = self.bg_coords # [1, N, 2] # torch.Size([1, 202500, 2])
+        results['bg_coords'] = bg_coords # torch.Size([1, 202500, 2])
 
-        results['poses'] = convert_poses(poses) # [B, 6]
-        results['poses_matrix'] = poses # [B, 4, 4]
+        results['poses'] = convert_poses(poses) # [B, 6] # torch.Size([1, 6])
+        results['poses_matrix'] = poses # [B, 4, 4] # torch.Size([1, 4, 4])
             
         return results
 
@@ -294,12 +294,12 @@ class NeRFDataset_Test:
     
         # test with novel auds, then use its length
         if self.auds is not None:
-            size = self.auds.shape[0]
+            size = self.auds.shape[0] # 588
         # live stream test, use 2 * len(poses), so it naturally mirrors.
         else:
             size = 2 * self.poses.shape[0]
 
-        loader = DataLoader(list(range(size)), batch_size=1, collate_fn=self.collate, shuffle=False, num_workers=0)
+        loader = DataLoader(list(range(size)), batch_size=1, collate_fn=self.collate, shuffle=False, num_workers=0) # len(list(range(size))) = 588
         loader._data = self # an ugly fix... we need poses in trainer.
 
         # do evaluate if has gt images and use self-driven setting
