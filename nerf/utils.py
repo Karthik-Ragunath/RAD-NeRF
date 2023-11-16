@@ -257,17 +257,17 @@ def get_rays(poses, intrinsics, H, W, N=-1, patch_size=1, rect=None):
         inds: [B, N]
     '''
 
-    device = poses.device
-    B = poses.shape[0]
+    device = poses.device # poses.shape - torch.Size([1, 4, 4])
+    B = poses.shape[0] # 1
     fx, fy, cx, cy = intrinsics
 
     if rect is not None:
         xmin, xmax, ymin, ymax = rect
         N = (xmax - xmin) * (ymax - ymin)
 
-    i, j = custom_meshgrid(torch.linspace(0, W-1, W, device=device), torch.linspace(0, H-1, H, device=device)) # float
-    i = i.t().reshape([1, H*W]).expand([B, H*W]) + 0.5
-    j = j.t().reshape([1, H*W]).expand([B, H*W]) + 0.5
+    i, j = custom_meshgrid(torch.linspace(0, W-1, W, device=device), torch.linspace(0, H-1, H, device=device)) # float # i = torch.Size([450, 450]); j - torch.Size([450, 450])
+    i = i.t().reshape([1, H*W]).expand([B, H*W]) + 0.5 # torch.Size([1, 202500])
+    j = j.t().reshape([1, H*W]).expand([B, H*W]) + 0.5 # torch.Size([1, 202500])
 
     results = {}
 
@@ -311,24 +311,24 @@ def get_rays(poses, intrinsics, H, W, N=-1, patch_size=1, rect=None):
 
 
     else:
-        inds = torch.arange(H*W, device=device).expand([B, H*W])
+        inds = torch.arange(H*W, device=device).expand([B, H*W]) # torch.Size([1, 202500]) # B = 1
     
-    results['i'] = i
-    results['j'] = j
-    results['inds'] = inds
+    results['i'] = i # torch.Size([1, 202500])
+    results['j'] = j # torch.Size([1, 202500])
+    results['inds'] = inds # inds.shape - torch.Size([1, 202500])
 
-    zs = torch.ones_like(i)
-    xs = (i - cx) / fx * zs
-    ys = (j - cy) / fy * zs
-    directions = torch.stack((xs, ys, zs), dim=-1)
-    directions = directions / torch.norm(directions, dim=-1, keepdim=True)
-    rays_d = directions @ poses[:, :3, :3].transpose(-1, -2) # (B, N, 3)
+    zs = torch.ones_like(i) # torch.Size([1, 202500])
+    xs = (i - cx) / fx * zs # torch.Size([1, 202500]) # cx 225.0 fx 1200.0
+    ys = (j - cy) / fy * zs # torch.Size([1, 202500]) # cy 225.0 fy 1200.0
+    directions = torch.stack((xs, ys, zs), dim=-1) # directions.shape torch.Size([1, 202500, 3])
+    directions = directions / torch.norm(directions, dim=-1, keepdim=True) # directions.shape torch.Size([1, 202500, 3])
+    rays_d = directions @ poses[:, :3, :3].transpose(-1, -2) # (B, N, 3) # poses[:, :3, :3].shape - torch.Size([1, 3, 3]); torch.Size([1, 202500, 3]); poses[:, :3, :3].transpose(-1, -2).shape - torch.Size([1, 3, 3])
 
-    rays_o = poses[..., :3, 3] # [B, 3]
-    rays_o = rays_o[..., None, :].expand_as(rays_d) # [B, N, 3]
+    rays_o = poses[..., :3, 3] # [B, 3] # poses[..., :3, 3].shape - torch.Size([1, 3]); poses.shape - torch.Size([1, 4, 4])
+    rays_o = rays_o[..., None, :].expand_as(rays_d) # [B, N, 3] # rays_d.shape - torch.Size([1, 202500, 3]); rays_o[..., None, :].expand_as(rays_d).shape - torch.Size([1, 202500, 3]); rays_o[..., None, :].shape - torch.Size([1, 1, 3])
 
-    results['rays_o'] = rays_o
-    results['rays_d'] = rays_d
+    results['rays_o'] = rays_o # torch.Size([1, 202500, 3])
+    results['rays_d'] = rays_d # torch.Size([1, 202500, 3])
 
     return results
 
@@ -1424,3 +1424,26 @@ class Trainer(object):
                 self.log("[INFO] loaded scaler.")
             except:
                 self.log("[WARN] Failed to load scaler.")
+
+'''
+i.shape torch.Size([1, 202500])
+W 450
+H 450
+i tensor([[  0.5000,   1.5000,   2.5000,  ..., 447.5000, 448.5000, 449.5000]], device='cuda:0')
+j tensor([[  0.5000,   0.5000,   0.5000,  ..., 449.5000, 449.5000, 449.5000]], device='cuda:0')
+i[0][450] tensor(0.5000, device='cuda:0')
+i[0][900] tensor(0.5000, device='cuda:0')
+i[0][50] tensor(50.5000, device='cuda:0')
+i[0][449] tensor(449.5000, device='cuda:0')
+j[0][450] tensor(1.5000, device='cuda:0')
+j[0][900] tensor(2.5000, device='cuda:0')
+j[0][50] tensor(0.5000, device='cuda:0')
+j[0][449] tensor(0.5000, device='cuda:0')
+
+inds tensor([[     0,      1,      2,  ..., 202497, 202498, 202499]], device='cuda:0')
+
+zs tensor([[1., 1., 1.,  ..., 1., 1., 1.]], device='cuda:0')
+
+xs tensor([[-0.1871, -0.1863, -0.1854,  ...,  0.1854,  0.1863,  0.1871]], device='cuda:0')
+ys tensor([[-0.1871, -0.1871, -0.1871,  ...,  0.1871,  0.1871,  0.1871]], device='cuda:0')
+'''
