@@ -89,9 +89,9 @@ class NeRFRenderer(nn.Module):
         self.register_buffer('aabb_infer', aabb_infer)
 
         # individual codes
-        self.individual_num = opt.ind_num
+        self.individual_num = opt.ind_num # 10000
 
-        self.individual_dim = opt.ind_dim
+        self.individual_dim = opt.ind_dim # 4
         if self.individual_dim > 0:
             self.individual_codes = nn.Parameter(torch.randn(self.individual_num, self.individual_dim) * 0.1) 
         
@@ -161,10 +161,10 @@ class NeRFRenderer(nn.Module):
         # index: [B]
         # return: image: [B, N, 3], depth: [B, N]
 
-        prefix = rays_o.shape[:-1]
-        rays_o = rays_o.contiguous().view(-1, 3)
-        rays_d = rays_d.contiguous().view(-1, 3)
-        bg_coords = bg_coords.contiguous().view(-1, 2)
+        prefix = rays_o.shape[:-1] # torch.Size([1, 202500])
+        rays_o = rays_o.contiguous().view(-1, 3) # rays_o.shape - torch.Size([202500, 3])
+        rays_d = rays_d.contiguous().view(-1, 3) # rays_d.shape - torch.Size([202500, 3])
+        bg_coords = bg_coords.contiguous().view(-1, 2) # bg_coords.shape - torch.Size([202500, 2])
 
         # only add camera offset at training!
         if self.train_camera and (self.training or self.test_train):
@@ -174,32 +174,32 @@ class NeRFRenderer(nn.Module):
             rays_o = rays_o + dT
             rays_d = rays_d @ dR
 
-        N = rays_o.shape[0] # N = B * N, in fact
-        device = rays_o.device
+        N = rays_o.shape[0] # N = B * N, in fact # 202500, B = 1, N = 202500
+        device = rays_o.device # device(type='cuda', index=0)
 
         results = {}
 
         # pre-calculate near far
-        nears, fars = raymarching.near_far_from_aabb(rays_o, rays_d, self.aabb_train if self.training else self.aabb_infer, self.min_near)
-        nears = nears.detach()
-        fars = fars.detach()
+        nears, fars = raymarching.near_far_from_aabb(rays_o, rays_d, self.aabb_train if self.training else self.aabb_infer, self.min_near) # self.aabb_infer - tensor([-1.0000, -0.5000, -1.0000,  1.0000,  0.5000,  1.0000], device='cuda:0') : (xmin, ymin, zmin, xmax, ymax, zmax), self.min_near - 0.05
+        nears = nears.detach() # torch.Size([202500])
+        fars = fars.detach() # torch.Size([202500])
 
         # encode audio
-        enc_a = self.encode_audio(auds) # [1, 64]
+        enc_a = self.encode_audio(auds) # [1, 64] # torch.Size([1, 64]) # auds - torch.Size([8, 44, 16])
 
         if enc_a is not None and self.smooth_lips:
             if self.enc_a is not None:
                 _lambda = 0.35
                 enc_a = _lambda * self.enc_a + (1 - _lambda) * enc_a
-            self.enc_a = enc_a
+            self.enc_a = enc_a # torch.Size([1, 64])
 
         
-        if self.individual_dim > 0:
+        if self.individual_dim > 0: # 4 > 0
             if self.training:
                 ind_code = self.individual_codes[index]
             # use a fixed ind code for the unknown test data.
             else:
-                ind_code = self.individual_codes[0]
+                ind_code = self.individual_codes[0] # torch.Size([4])
         else:
             ind_code = None
 
@@ -226,36 +226,36 @@ class NeRFRenderer(nn.Module):
            
             dtype = torch.float32
             
-            weights_sum = torch.zeros(N, dtype=dtype, device=device)
-            depth = torch.zeros(N, dtype=dtype, device=device)
+            weights_sum = torch.zeros(N, dtype=dtype, device=device) # torch.Size([202500]); N - 202500
+            depth = torch.zeros(N, dtype=dtype, device=device) # torch.Size([202500])
             image = torch.zeros(N, 3, dtype=dtype, device=device) # torch.Size([202500, 3])
             
-            n_alive = N
-            rays_alive = torch.arange(n_alive, dtype=torch.int32, device=device) # [N]
-            rays_t = nears.clone() # [N]
+            n_alive = N # 202500
+            rays_alive = torch.arange(n_alive, dtype=torch.int32, device=device) # [N] torch.Size([202500])
+            rays_t = nears.clone() # [N] # torch.Size([202500])
 
             step = 0
             
-            while step < max_steps:
+            while step < max_steps: # max_steps - 16
 
                 # count alive rays 
-                n_alive = rays_alive.shape[0]
+                n_alive = rays_alive.shape[0] # 202500
                 
                 # exit loop
                 if n_alive <= 0:
                     break
 
                 # decide compact_steps
-                n_step = max(min(N // n_alive, 8), 1)
-
-                xyzs, dirs, deltas = raymarching.march_rays(n_alive, n_step, rays_alive, rays_t, rays_o, rays_d, self.bound, self.density_bitfield, self.cascade, self.grid_size, nears, fars, 128, perturb if step == 0 else False, dt_gamma, max_steps)
+                n_step = max(min(N // n_alive, 8), 1) # 1
+                # self.bound - 1; self.density_bitfield.shape - torch.Size([262144]); self.cascade - 1; self.grid_size - 128; {nears, fars}.shape - torch.Size([202500]); perturb = False; dt_gamma - 0.00390625; max_steps - 16
+                xyzs, dirs, deltas = raymarching.march_rays(n_alive, n_step, rays_alive, rays_t, rays_o, rays_d, self.bound, self.density_bitfield, self.cascade, self.grid_size, nears, fars, 128, perturb if step == 0 else False, dt_gamma, max_steps) # torch.Size([202624, 3]), torch.Size([202624, 3]), torch.Size([202624, 2])
                 # torch.Size([202624, 3]), torch.Size([202624, 3]), torch.Size([202624, 2])
-                sigmas, rgbs, ambient = self(xyzs, dirs, enc_a, ind_code, eye)
+                sigmas, rgbs, ambient = self(xyzs, dirs, enc_a, ind_code, eye) # torch.Size([202624, 3]), torch.Size([202624, 3]), torch.Size([1, 64]), torch.Size([4]), torch.Size([1, 1])
                 sigmas = self.density_scale * sigmas # torch.Size([202624]), rgs - torch.Size([202624, 3])
 
-                raymarching.composite_rays(n_alive, n_step, rays_alive, rays_t, sigmas, rgbs, deltas, weights_sum, depth, image, T_thresh)
+                raymarching.composite_rays(n_alive, n_step, rays_alive, rays_t, sigmas, rgbs, deltas, weights_sum, depth, image, T_thresh) # 0.0001
 
-                rays_alive = rays_alive[rays_alive >= 0] # torch.Size([63206]) # torch.Size([59030])
+                rays_alive = rays_alive[rays_alive >= 0] # torch.Size([63206]) # torch.Size([59030]) # input - rays_alive.shape - torch.Size([202500])
  
                 # print(f'step = {step}, n_step = {n_step}, n_alive = {n_alive}, xyzs: {xyzs.shape}')
 
@@ -510,11 +510,11 @@ class NeRFRenderer(nn.Module):
 
         _run = self.run_cuda
         
-        B, N = rays_o.shape[:2]
+        B, N = rays_o.shape[:2] # (1, 202500)
         device = rays_o.device
 
         # never stage when cuda_ray
-        if staged and not self.cuda_ray:
+        if staged and not self.cuda_ray: # True and not True
             depth = torch.empty((B, N), device=device)
             image = torch.empty((B, N, 3), device=device)
 

@@ -732,4 +732,4 @@ class NeRFDataset:
         # do evaluate if has gt images and use self-driven setting
         loader.has_gt = (self.opt.aud == '')
 
-        return loader        
+        return loader

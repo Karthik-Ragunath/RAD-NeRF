@@ -40,7 +40,7 @@ def custom_meshgrid(*args):
 
 
 def get_audio_features(features, att_mode, index):
-    if att_mode == 0:
+    if att_mode == 0: # att_mode = 2; index = 0
         return features[[index]]
     elif att_mode == 1:
         left = index - 8
@@ -54,19 +54,19 @@ def get_audio_features(features, att_mode, index):
             auds = torch.cat([torch.zeros(pad_left, *auds.shape[1:], device=auds.device, dtype=auds.dtype), auds], dim=0)
         return auds
     elif att_mode == 2:
-        left = index - 4
-        right = index + 4
+        left = index - 4 # -4
+        right = index + 4 # 4
         pad_left = 0
         pad_right = 0
         if left < 0:
-            pad_left = -left
-            left = 0
-        if right > features.shape[0]:
+            pad_left = -left # 4
+            left = 0 # 0
+        if right > features.shape[0]: # 588
             pad_right = right - features.shape[0]
             right = features.shape[0]
-        auds = features[left:right]
+        auds = features[left:right] # torch.Size([4, 44, 16])
         if pad_left > 0:
-            auds = torch.cat([torch.zeros_like(auds[:pad_left]), auds], dim=0)
+            auds = torch.cat([torch.zeros_like(auds[:pad_left]), auds], dim=0) # torch.Size([8, 44, 16])
         if pad_right > 0:
             auds = torch.cat([auds, torch.zeros_like(auds[:pad_right])], dim=0) # [8, 16]
         return auds
@@ -261,7 +261,7 @@ def get_rays(poses, intrinsics, H, W, N=-1, patch_size=1, rect=None):
     B = poses.shape[0] # 1
     fx, fy, cx, cy = intrinsics
 
-    if rect is not None:
+    if rect is not None: # Normalize
         xmin, xmax, ymin, ymax = rect
         N = (xmax - xmin) * (ymax - ymin)
 
@@ -840,25 +840,25 @@ class Trainer(object):
     # moved out bg_color and perturb for more flexible control...
     def test_step(self, data, bg_color=None, perturb=False):  
 
-        rays_o = data['rays_o'] # [B, N, 3]
-        rays_d = data['rays_d'] # [B, N, 3]
-        bg_coords = data['bg_coords'] # [1, N, 2]
-        poses = data['poses'] # [B, 7]
+        rays_o = data['rays_o'] # [B, N, 3] # torch.Size([1, 202500, 3])
+        rays_d = data['rays_d'] # [B, N, 3] # torch.Size([1, 202500, 3])
+        bg_coords = data['bg_coords'] # [1, N, 2] # torch.Size([1, 202500, 2])
+        poses = data['poses'] # [B, 7] # torch.Size([1, 6])
 
-        auds = data['auds'] # [B, 29, 16]
-        index = data['index']
-        H, W = data['H'], data['W']
+        auds = data['auds'] # [B, 29, 16] # torch.Size([8, 44, 16])
+        index = data['index'] # 0
+        H, W = data['H'], data['W'] # (450, 450)
 
         # allow using a fixed eye area (avoid eye blink) at test
-        if self.opt.exp_eye and self.opt.fix_eye >= 0:
+        if self.opt.exp_eye and self.opt.fix_eye >= 0: # True and -1
             eye = torch.FloatTensor([self.opt.fix_eye]).view(1, 1).to(self.device)
         else:
-            eye = data['eye'] # [B, 1]
+            eye = data['eye'] # [B, 1] # torch.Size([1, 1])
 
         if bg_color is not None:    
             bg_color = bg_color.to(self.device)
         else:
-            bg_color = data['bg_color']
+            bg_color = data['bg_color'] # torch.Size([1, 202500, 3])
 
         outputs = self.model.render(rays_o, rays_d, auds, bg_coords, poses, eye=eye, index=index, staged=True, bg_color=bg_color, perturb=perturb, **vars(self.opt))
 
@@ -942,7 +942,7 @@ class Trainer(object):
             for i, data in enumerate(loader):
                 
                 with torch.cuda.amp.autocast(enabled=self.fp16):
-                    preds, preds_depth = self.test_step(data) # torch.Size([1, 450, 450, 3]) # torch.Size([1, 450, 450])       
+                    preds, preds_depth = self.test_step(data) # dict_keys(['auds', 'index', 'H', 'W', 'rays_o', 'rays_d', 'eye', 'bg_color', 'bg_coords', 'poses', 'poses_matrix'])   
                 
                 path = os.path.join(save_path, f'{name}_{i:04d}_rgb.png')
                 path_depth = os.path.join(save_path, f'{name}_{i:04d}_depth.png')

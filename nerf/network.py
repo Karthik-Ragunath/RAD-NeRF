@@ -30,11 +30,11 @@ class AudioAttNet(nn.Module):
         )
 
     def forward(self, x):
-        # x: [1, seq_len, dim_aud]
-        y = x.permute(0, 2, 1)  # [1, dim_aud, seq_len]
-        y = self.attentionConvNet(y) 
-        y = self.attentionNet(y.view(1, self.seq_len)).view(1, self.seq_len, 1)
-        return torch.sum(y * x, dim=1) # [1, dim_aud]
+        # x: [1, seq_len, dim_aud]; x.shape - torch.Size([1, 8, 64])
+        y = x.permute(0, 2, 1)  # [1, dim_aud, seq_len] # torch.Size([1, 64, 8])
+        y = self.attentionConvNet(y)  # torch.Size([1, 1, 8])
+        y = self.attentionNet(y.view(1, self.seq_len)).view(1, self.seq_len, 1) # torch.Size([1, 8, 1]), y.view(1, self.seq_len).shape - torch.Size([1, 8]), self.attentionNet(y.view(1, self.seq_len)).shape - torch.Size([1, 8])
+        return torch.sum(y * x, dim=1) # [1, dim_aud] # torch.Size([1, 64])
 
 
 # Audio feature extractor
@@ -60,10 +60,10 @@ class AudioNet(nn.Module):
         )
 
     def forward(self, x):
-        half_w = int(self.win_size/2)
-        x = x[:, :, 8-half_w:8+half_w]
-        x = self.encoder_conv(x).squeeze(-1)
-        x = self.encoder_fc1(x)
+        half_w = int(self.win_size/2) # 8 # x.shape - torch.Size([8, 44, 16])
+        x = x[:, :, 8-half_w:8+half_w] # x.shape - torch.Size([8, 44, 16])
+        x = self.encoder_conv(x).squeeze(-1) # torch.Size([8, 64, 1]).squeeze(-1) = torch.Size([8, 64])
+        x = self.encoder_fc1(x) # torch.Size([8, 64])
         return x
 
 class MLP(nn.Module):
@@ -123,7 +123,7 @@ class NeRFNetwork(NeRFRenderer):
 
         # audio network
         self.audio_dim = audio_dim    
-        self.audio_net = AudioNet(self.audio_in_dim, self.audio_dim) # 44, 64
+        self.audio_net = AudioNet(self.audio_in_dim, self.audio_dim) # 44, 64 # CNN -> reduce spatial to 1, followed by FC layer
 
         self.att = self.opt.att # 2
         if self.att > 0: # 2
@@ -172,15 +172,15 @@ class NeRFNetwork(NeRFRenderer):
         # if emb, a should be: [1, 16] or [8, 16]
 
         # fix audio traininig
-        if a is None: return None
+        if a is None: return None # torch.Size([8, 44, 16])
 
         if self.emb:
             a = self.embedding(a).transpose(-1, -2).contiguous() # [1/8, 29, 16]
 
-        enc_a = self.audio_net(a) # [1/8, 64]
+        enc_a = self.audio_net(a) # [1/8, 64] # torch.Size([8, 64])
 
         if self.att > 0:
-            enc_a = self.audio_att_net(enc_a.unsqueeze(0)) # [1, 64]
+            enc_a = self.audio_att_net(enc_a.unsqueeze(0)) # [1, 64] # CNN - stride 1, pad 1 -> reduce 8 channels to 1 channel while maintaining spatial dim
             
         return enc_a
 
@@ -220,6 +220,7 @@ class NeRFNetwork(NeRFRenderer):
 
 
     def forward(self, x, d, enc_a, c, e=None):
+        # torch.Size([202624, 3]), torch.Size([202624, 3]), torch.Size([1, 64]), torch.Size([4]), torch.Size([1, 1])
         # x: [N, 3], in [-bound, bound]
         # d: [N, 3], nomalized in [-1, 1]
         # enc_a: [1, aud_dim]
@@ -246,7 +247,7 @@ class NeRFNetwork(NeRFRenderer):
             ambient = torch.tanh(ambient) # map to [-1, 1] # torch.Size([202624, 2])
 
             # ender.record(); torch.cuda.synchronize(); curr_time = starter.elapsed_time(ender); print(f"de-an net = {curr_time}"); starter.record()
-
+    
             # sigma
             enc_w = self.encoder_ambient(ambient, bound=1) # torch.Size([202624, 32])
 

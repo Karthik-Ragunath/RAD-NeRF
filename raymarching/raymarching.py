@@ -374,27 +374,40 @@ class _march_rays(Function):
         if not rays_o.is_cuda: rays_o = rays_o.cuda()
         if not rays_d.is_cuda: rays_d = rays_d.cuda()
         
-        rays_o = rays_o.contiguous().view(-1, 3)
-        rays_d = rays_d.contiguous().view(-1, 3)
+        rays_o = rays_o.contiguous().view(-1, 3) # torch.Size([202500, 3])
+        rays_d = rays_d.contiguous().view(-1, 3) # torch.Size([202500, 3])
 
-        M = n_alive * n_step
+        M = n_alive * n_step # 202500
 
-        if align > 0:
-            M += align - (M % align)
+        if align > 0: # 128
+            M += align - (M % align) # 202624 # make num_rays divisble by align - 128
         
-        xyzs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device)
-        dirs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device)
-        deltas = torch.zeros(M, 2, dtype=rays_o.dtype, device=rays_o.device) # 2 vals, one for rgb, one for depth
+        xyzs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 3])
+        dirs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 3])
+        deltas = torch.zeros(M, 2, dtype=rays_o.dtype, device=rays_o.device) # 2 vals, one for rgb, one for depth # torch.Size([202624, 2])
 
         if perturb:
             # torch.manual_seed(perturb) # test_gui uses spp index as seed
             noises = torch.rand(n_alive, dtype=rays_o.dtype, device=rays_o.device)
         else:
-            noises = torch.zeros(n_alive, dtype=rays_o.dtype, device=rays_o.device)
+            noises = torch.zeros(n_alive, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202500])
 
         _backend.march_rays(n_alive, n_step, rays_alive, rays_t, rays_o, rays_d, bound, dt_gamma, max_steps, C, H, density_bitfield, near, far, xyzs, dirs, deltas, noises)
 
         return xyzs, dirs, deltas
+    
+        # torch.count_nonzero(xyzs)
+        # tensor(189618, device='cuda:0')
+        # torch.count_nonzero(dirs)
+        # tensor(189618, device='cuda:0')
+        # torch.count_nonzero(deltas)
+        # tensor(126412, device='cuda:0')
+        # torch.count_nonzero(deltas, dim=0)
+        # tensor([63206, 63206], device='cuda:0')
+        # torch.count_nonzero(xyzs, dim=0)
+        # tensor([63206, 63206, 63206], device='cuda:0')
+        # torch.count_nonzero(dirs, dim=0)
+        # tensor([63206, 63206, 63206], device='cuda:0')
 
 march_rays = _march_rays.apply
 
