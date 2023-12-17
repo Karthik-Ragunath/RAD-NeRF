@@ -618,31 +618,31 @@ class Trainer(object):
         self.console = Console()
 
         model.to(self.device)
-        if self.world_size > 1:
+        if self.world_size > 1: # 1
             model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
         self.model = model
 
-        if isinstance(criterion, nn.Module):
+        if isinstance(criterion, nn.Module): # criterion = None
             criterion.to(self.device)
         self.criterion = criterion
 
-        if optimizer is None:
+        if optimizer is None: # None
             self.optimizer = optim.Adam(self.model.parameters(), lr=0.001, weight_decay=5e-4) # naive adam
         else:
             self.optimizer = optimizer(self.model)
 
-        if lr_scheduler is None:
-            self.lr_scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lambda epoch: 1) # fake scheduler
+        if lr_scheduler is None: # None
+            self.lr_scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lambda epoch: 1) # fake scheduler # <torch.optim.lr_scheduler.LambdaLR object at 0x7efd19bf9360>
         else:
             self.lr_scheduler = lr_scheduler(self.optimizer)
 
-        if ema_decay is not None:
+        if ema_decay is not None: # None
             self.ema = ExponentialMovingAverage(self.model.parameters(), decay=ema_decay)
         else:
-            self.ema = None
+            self.ema = None # None
 
-        self.scaler = torch.cuda.amp.GradScaler(enabled=self.fp16)
+        self.scaler = torch.cuda.amp.GradScaler(enabled=self.fp16) # self.fp16 = True # <torch.cuda.amp.grad_scaler.GradScaler object at 0x7efd19bfb730>
 
         # optionally use LPIPS loss for patch-based training
         if self.opt.patch_size > 1 or self.opt.finetune_lips:
@@ -662,19 +662,19 @@ class Trainer(object):
             }
 
         # auto fix
-        if len(metrics) == 0 or self.use_loss_as_metric:
-            self.best_mode = 'min'
+        if len(metrics) == 0 or self.use_loss_as_metric: # len(metrics) = 0, self.use_loss_as_metric = True
+            self.best_mode = 'min' # 'min'
 
         # workspace prepare
         self.log_ptr = None
-        if self.workspace is not None:
-            os.makedirs(self.workspace, exist_ok=True)        
-            self.log_path = os.path.join(workspace, f"log_{self.name}.txt")
-            self.log_ptr = open(self.log_path, "a+")
+        if self.workspace is not None: # self.workspace = 'trial_obama/'
+            os.makedirs(self.workspace, exist_ok=True) # 'trial_obama/'        
+            self.log_path = os.path.join(workspace, f"log_{self.name}.txt") # 'trial_obama/log_ngp.txt'
+            self.log_ptr = open(self.log_path, "a+") # <_io.TextIOWrapper name='trial_obama/log_ngp.txt' mode='a+' encoding='UTF-8'>
 
-            self.ckpt_path = os.path.join(self.workspace, 'checkpoints')
-            self.best_path = f"{self.ckpt_path}/{self.name}.pth"
-            os.makedirs(self.ckpt_path, exist_ok=True)
+            self.ckpt_path = os.path.join(self.workspace, 'checkpoints') # 'trial_obama/checkpoints'
+            self.best_path = f"{self.ckpt_path}/{self.name}.pth" # 'trial_obama/checkpoints/ngp.pth'
+            os.makedirs(self.ckpt_path, exist_ok=True) # 'trial_obama/checkpoints'
             
         self.log(f'[INFO] Trainer: {self.name} | {self.time_stamp} | {self.device} | {"fp16" if self.fp16 else "fp32"} | {self.workspace}')
         self.log(f'[INFO] #parameters: {sum([p.numel() for p in model.parameters() if p.requires_grad])}')
@@ -695,7 +695,7 @@ class Trainer(object):
                 else:
                     self.log(f"[INFO] {self.best_path} not found, loading latest ...")
                     self.load_checkpoint()
-            else: # path to ckpt
+            else: # path to ckpt # 'pretrained/obama_eo.pth'
                 self.log(f"[INFO] Loading {self.use_checkpoint} ...")
                 self.load_checkpoint(self.use_checkpoint)
 
@@ -1527,4 +1527,18 @@ ys tensor([[-0.1871, -0.1871, -0.1871,  ...,  0.1871,  0.1871,  0.1871]], device
 #       (2): Linear(in_features=32, out_features=4, bias=False)
 #     )
 #   )
+# )
+
+# Adam (
+# Parameter Group 0
+#     amsgrad: False
+#     betas: (0.9, 0.999)
+#     capturable: False
+#     differentiable: False
+#     eps: 1e-08
+#     foreach: None
+#     fused: None
+#     lr: 0.001
+#     maximize: False
+#     weight_decay: 0.0005
 # )
