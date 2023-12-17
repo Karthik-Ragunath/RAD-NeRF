@@ -239,7 +239,7 @@ class NeRFRenderer(nn.Module):
             while step < max_steps: # max_steps - 16
 
                 # count alive rays 
-                n_alive = rays_alive.shape[0] # 202500
+                n_alive = rays_alive.shape[0] # 202500, 63206
                 
                 # exit loop
                 if n_alive <= 0:
@@ -250,12 +250,12 @@ class NeRFRenderer(nn.Module):
                 # self.bound - 1; self.density_bitfield.shape - torch.Size([262144]); self.cascade - 1; self.grid_size - 128; {nears, fars}.shape - torch.Size([202500]); perturb = False; dt_gamma - 0.00390625; max_steps - 16
                 xyzs, dirs, deltas = raymarching.march_rays(n_alive, n_step, rays_alive, rays_t, rays_o, rays_d, self.bound, self.density_bitfield, self.cascade, self.grid_size, nears, fars, 128, perturb if step == 0 else False, dt_gamma, max_steps) # torch.Size([202624, 3]), torch.Size([202624, 3]), torch.Size([202624, 2])
                 # torch.Size([202624, 3]), torch.Size([202624, 3]), torch.Size([202624, 2])
-                sigmas, rgbs, ambient = self(xyzs, dirs, enc_a, ind_code, eye) # torch.Size([202624, 3]), torch.Size([202624, 3]), torch.Size([1, 64]), torch.Size([4]), torch.Size([1, 1])
+                sigmas, rgbs, ambient = self(xyzs, dirs, enc_a, ind_code, eye) # torch.Size([202624, 3]), torch.Size([202624, 3]), torch.Size([1, 64]), torch.Size([4]), torch.Size([1, 1]); iter 2: sigmas.shape = torch.Size([189696]), rgbs.shape = torch.Size([189696, 3]), ambient.shape = torch.Size([189696, 2])
                 sigmas = self.density_scale * sigmas # torch.Size([202624]), rgs - torch.Size([202624, 3])
 
                 raymarching.composite_rays(n_alive, n_step, rays_alive, rays_t, sigmas, rgbs, deltas, weights_sum, depth, image, T_thresh) # 0.0001
 
-                rays_alive = rays_alive[rays_alive >= 0] # torch.Size([63206]) # torch.Size([59030]) # input - rays_alive.shape - torch.Size([202500])
+                rays_alive = rays_alive[rays_alive >= 0] # torch.Size([63206]) # torch.Size([59030]) # rays_alive.shape = torch.Size([52846])  # input - rays_alive.shape - torch.Size([202500])
  
                 # print(f'step = {step}, n_step = {n_step}, n_alive = {n_alive}, xyzs: {xyzs.shape}')
 

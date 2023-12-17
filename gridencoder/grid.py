@@ -109,15 +109,15 @@ class GridEncoder(nn.Module):
         self.base_resolution = base_resolution # 16 (both)
         self.output_dim = num_levels * level_dim # 16 * 2 = 32 (both)
         self.gridtype = gridtype # 'tiled' (both)
-        self.gridtype_id = _gridtype_to_id[gridtype] # "tiled" or "hash" # {'hash': 0, 'tiled': 1}
-        self.interpolation = interpolation # 'linear'
+        self.gridtype_id = _gridtype_to_id[gridtype] # "tiled" or "hash" # {'hash': 0, 'tiled': 1} (both)
+        self.interpolation = interpolation # 'linear' (both)
         self.interp_id = _interp_to_id[interpolation] # "linear" or "smoothstep" # {'linear': 0, 'smoothstep': 1}
-        self.align_corners = align_corners # False
+        self.align_corners = align_corners # False (both)
 
         # allocate parameters
         offsets = []
         offset = 0
-        self.max_params = 2 ** log2_hashmap_size # 2 ** 16 = 65536
+        self.max_params = 2 ** log2_hashmap_size # 2 ** 16 = 65536 (both)
         for i in range(num_levels): # num_levels = 16 
             resolution = int(np.ceil(base_resolution * per_level_scale ** i)) # 16, 23, 31, 43, 59, 81, 112, 154, 213, ... # 32 * 32 * 32 = 32768, # 44 * 44 * 44 = 85184
             params_in_level = min(self.max_params, (resolution if align_corners else resolution + 1) ** input_dim) # limit max number

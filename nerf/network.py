@@ -236,7 +236,7 @@ class NeRFNetwork(NeRFRenderer):
             enc_w = self.encoder_ambient(ambient, bound=1)
         else:
             
-            enc_a = enc_a.repeat(x.shape[0], 1) # torch.Size([202624, 64]) # audio_encoder
+            enc_a = enc_a.repeat(x.shape[0], 1) # torch.Size([202624, 64]) # audio_encoder # x.shape[0] = 202624, # iter 2 - enc_a.shape = torch.Size([189696, 64])
             enc_x = self.encoder(x, bound=self.bound) # torch.Size([202624, 32]) # self.bound = 1
 
             # ender.record(); torch.cuda.synchronize(); curr_time = starter.elapsed_time(ender); print(f"enocoder_deform = {curr_time}"); starter.record()
