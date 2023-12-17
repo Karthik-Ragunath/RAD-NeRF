@@ -238,10 +238,10 @@ def convert_poses(poses):
 
 @torch.cuda.amp.autocast(enabled=False)
 def get_bg_coords(H, W, device):
-    X = torch.arange(H, device=device) / (H - 1) * 2 - 1 # in [-1, 1]
-    Y = torch.arange(W, device=device) / (W - 1) * 2 - 1 # in [-1, 1]
+    X = torch.arange(H, device=device) / (H - 1) * 2 - 1 # in [-1, 1] # H = 450, W = 450, # X.shape = torch.Size([450])
+    Y = torch.arange(W, device=device) / (W - 1) * 2 - 1 # in [-1, 1] # Y.shape = torch.Size([450])
     xs, ys = custom_meshgrid(X, Y)
-    bg_coords = torch.cat([xs.reshape(-1, 1), ys.reshape(-1, 1)], dim=-1).unsqueeze(0) # [1, H*W, 2], in [-1, 1]
+    bg_coords = torch.cat([xs.reshape(-1, 1), ys.reshape(-1, 1)], dim=-1).unsqueeze(0) # [1, H*W, 2], in [-1, 1] # torch.Size([1, 202500, 2])
     return bg_coords
 
 

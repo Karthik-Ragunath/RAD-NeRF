@@ -157,7 +157,7 @@ class NeRFDataset_Test:
 
             if self.opt.exp_eye:
                 
-                if 'eye_ratio' in f:
+                if 'eye_ratio' in f: # f.keys() = dict_keys(['img_id', 'aud_id', 'transform_matrix'])
                     area = f['eye_ratio']
                 else:
                     area = 0.25 # default value for opened eye # 0.25
@@ -166,7 +166,7 @@ class NeRFDataset_Test:
         
         # load pre-extracted background image (should be the same size as training image...)
 
-        if self.opt.bg_img == 'white': # special
+        if self.opt.bg_img == 'white': # special # self.opt.bg_img = 'white'
             bg_img = np.ones((self.H, self.W, 3), dtype=np.float32) # (450, 450, 3)
         elif self.opt.bg_img == 'black': # special
             bg_img = np.zeros((self.H, self.W, 3), dtype=np.float32)
@@ -177,7 +177,7 @@ class NeRFDataset_Test:
             bg_img = cv2.cvtColor(bg_img, cv2.COLOR_BGR2RGB)
             bg_img = bg_img.astype(np.float32) / 255 # [H, W, 3/4]
 
-        self.bg_img = bg_img
+        self.bg_img = bg_img # 1s - (450, 450, 3) - type -> numpy
 
         self.poses = np.stack(self.poses, axis=0) # (7272, 4, 4)
 
@@ -293,7 +293,7 @@ class NeRFDataset_Test:
 
     
         # test with novel auds, then use its length
-        if self.auds is not None:
+        if self.auds is not None: # self.auds.shape = torch.Size([588, 44, 16])
             size = self.auds.shape[0] # 588
         # live stream test, use 2 * len(poses), so it naturally mirrors.
         else:
