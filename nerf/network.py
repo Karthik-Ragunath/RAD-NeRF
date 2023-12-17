@@ -172,7 +172,7 @@ class NeRFNetwork(NeRFRenderer):
         # if emb, a should be: [1, 16] or [8, 16]
 
         # fix audio traininig
-        if a is None: return None # torch.Size([8, 44, 16])
+        if a is None: return None # torch.Size([8, 44, 16]) # a.shape = torch.Size([8, 44, 16])
 
         if self.emb:
             a = self.embedding(a).transpose(-1, -2).contiguous() # [1/8, 29, 16]
@@ -180,7 +180,7 @@ class NeRFNetwork(NeRFRenderer):
         enc_a = self.audio_net(a) # [1/8, 64] # torch.Size([8, 64])
 
         if self.att > 0:
-            enc_a = self.audio_att_net(enc_a.unsqueeze(0)) # [1, 64] # CNN - stride 1, pad 1 -> reduce 8 channels to 1 channel while maintaining spatial dim
+            enc_a = self.audio_att_net(enc_a.unsqueeze(0)) # torch.Size([1, 64]) # [1, 64] # CNN - stride 1, pad 1 -> reduce 8 channels to 1 channel while maintaining spatial dim
             
         return enc_a
 

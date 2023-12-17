@@ -180,14 +180,14 @@ class NeRFRenderer(nn.Module):
         results = {}
 
         # pre-calculate near far
-        nears, fars = raymarching.near_far_from_aabb(rays_o, rays_d, self.aabb_train if self.training else self.aabb_infer, self.min_near) # self.aabb_infer - tensor([-1.0000, -0.5000, -1.0000,  1.0000,  0.5000,  1.0000], device='cuda:0') : (xmin, ymin, zmin, xmax, ymax, zmax), self.min_near - 0.05
+        nears, fars = raymarching.near_far_from_aabb(rays_o, rays_d, self.aabb_train if self.training else self.aabb_infer, self.min_near) # torch.Size([202500]), torch.Size([202500]) # self.aabb_infer - tensor([-1.0000, -0.5000, -1.0000,  1.0000,  0.5000,  1.0000], device='cuda:0') : (xmin, ymin, zmin, xmax, ymax, zmax), self.min_near = 0.05
         nears = nears.detach() # torch.Size([202500])
         fars = fars.detach() # torch.Size([202500])
 
         # encode audio
         enc_a = self.encode_audio(auds) # [1, 64] # torch.Size([1, 64]) # auds - torch.Size([8, 44, 16])
 
-        if enc_a is not None and self.smooth_lips:
+        if enc_a is not None and self.smooth_lips: # self.smooth_lips = True
             if self.enc_a is not None:
                 _lambda = 0.35
                 enc_a = _lambda * self.enc_a + (1 - _lambda) * enc_a
