@@ -371,22 +371,22 @@ class _march_rays(Function):
             deltas: float, [n_alive * n_step, 2], all generated points' deltas (here we record two deltas, the first is for RGB, the second for depth).
         '''
         
-        if not rays_o.is_cuda: rays_o = rays_o.cuda()
-        if not rays_d.is_cuda: rays_d = rays_d.cuda()
+        if not rays_o.is_cuda: rays_o = rays_o.cuda() # torch.Size([202500, 3])
+        if not rays_d.is_cuda: rays_d = rays_d.cuda() # torch.Size([202500, 3])
         
         rays_o = rays_o.contiguous().view(-1, 3) # torch.Size([202500, 3])
         rays_d = rays_d.contiguous().view(-1, 3) # torch.Size([202500, 3])
 
-        M = n_alive * n_step # 202500
+        M = n_alive * n_step # 202500 # n_step = 1
 
         if align > 0: # 128
             M += align - (M % align) # 202624 # make num_rays divisble by align - 128
         
         xyzs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 3])
         dirs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 3])
-        deltas = torch.zeros(M, 2, dtype=rays_o.dtype, device=rays_o.device) # 2 vals, one for rgb, one for depth # torch.Size([202624, 2])
+        deltas = torch.zeros(M, 2, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 2]) # 2 vals, one for rgb, one for depth # torch.Size([202624, 2])
 
-        if perturb:
+        if perturb: # False
             # torch.manual_seed(perturb) # test_gui uses spp index as seed
             noises = torch.rand(n_alive, dtype=rays_o.dtype, device=rays_o.device)
         else:
@@ -448,3 +448,16 @@ composite_rays = _composite_rays.apply
 # tensor(202499, device='cuda:0')
 # torch.argmax(fars)
 # tensor(202499, device='cuda:0')
+
+# torch.max(xyzs)
+# tensor(0.5779, device='cuda:0')
+# torch.max(dirs)
+# tensor(0.1703, device='cuda:0')
+# torch.max(deltas)
+# tensor(3.8666, device='cuda:0')
+# torch.min(xyzs)
+# tensor(-0.4070, device='cuda:0')
+# torch.min(dirs)
+# tensor(-1.0000, device='cuda:0')
+# torch.min(deltas)
+# tensor(0., device='cuda:0')

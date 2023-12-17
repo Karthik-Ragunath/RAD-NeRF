@@ -187,7 +187,7 @@ class NeRFRenderer(nn.Module):
         # encode audio
         enc_a = self.encode_audio(auds) # [1, 64] # torch.Size([1, 64]) # auds - torch.Size([8, 44, 16])
 
-        if enc_a is not None and self.smooth_lips: # self.smooth_lips = True
+        if enc_a is not None and self.smooth_lips: # enc_a.shape = torch.Size([1, 64]) # self.smooth_lips = True
             if self.enc_a is not None:
                 _lambda = 0.35
                 enc_a = _lambda * self.enc_a + (1 - _lambda) * enc_a
@@ -199,7 +199,7 @@ class NeRFRenderer(nn.Module):
                 ind_code = self.individual_codes[index]
             # use a fixed ind code for the unknown test data.
             else:
-                ind_code = self.individual_codes[0] # torch.Size([4])
+                ind_code = self.individual_codes[0] # torch.Size([4]) # tensor([-0.0718, -0.1488, -0.0244, -0.0537], device='cuda:0', requires_grad=True)
         else:
             ind_code = None
 
@@ -234,7 +234,7 @@ class NeRFRenderer(nn.Module):
             rays_alive = torch.arange(n_alive, dtype=torch.int32, device=device) # [N] torch.Size([202500])
             rays_t = nears.clone() # [N] # torch.Size([202500])
 
-            step = 0
+            step = 0 # 0
             
             while step < max_steps: # max_steps - 16
 
