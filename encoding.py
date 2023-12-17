@@ -24,7 +24,7 @@ def get_encoder(encoding, input_dim=3,
         from gridencoder import GridEncoder
         encoder = GridEncoder(input_dim=input_dim, num_levels=num_levels, level_dim=level_dim, base_resolution=base_resolution, log2_hashmap_size=log2_hashmap_size, desired_resolution=desired_resolution, gridtype='hash', align_corners=align_corners)
     
-    elif encoding == 'tiledgrid':
+    elif encoding == 'tiledgrid': # tiledgrid
         from gridencoder import GridEncoder
         encoder = GridEncoder(input_dim=input_dim, num_levels=num_levels, level_dim=level_dim, base_resolution=base_resolution, log2_hashmap_size=log2_hashmap_size, desired_resolution=desired_resolution, gridtype='tiled', align_corners=align_corners)
     
@@ -35,4 +35,7 @@ def get_encoder(encoding, input_dim=3,
     else:
         raise NotImplementedError('Unknown encoding mode, choose from [None, frequency, spherical_harmonics, hashgrid, tiledgrid]')
 
-    return encoder, encoder.output_dim
+    return encoder, encoder.output_dim # SHEncoder: input_dim=3 degree=4, 16 # FreqEncoder: input_dim=2 degree=10 output_dim=42, 42
+
+# TORSO
+# GridEncoder: input_dim=2 num_levels=16 level_dim=2 resolution=16 -> 2048 per_level_scale=1.3819 params=(555520, 2) gridtype=tiled align_corners=False interpolation=linear, 32

@@ -101,14 +101,14 @@ class GridEncoder(nn.Module):
         if desired_resolution is not None: # desired_resolution = 2048; base_resolution = 16; num_levels = 16
             per_level_scale = np.exp2(np.log2(desired_resolution / base_resolution) / (num_levels - 1)) # 1.381912879967776
 
-        self.input_dim = input_dim # coord dims, 2 or 3 # 3
-        self.num_levels = num_levels # num levels, each level multiply resolution by 2 # 16
+        self.input_dim = input_dim # coord dims, 2 or 3 # 3 # Torso = 2
+        self.num_levels = num_levels # num levels, each level multiply resolution by 2 # 16 (both)
         self.level_dim = level_dim # encode channels per level # 2
-        self.per_level_scale = per_level_scale # multiply resolution by this scale at each level. # 1.381912879967776
-        self.log2_hashmap_size = log2_hashmap_size # 16
-        self.base_resolution = base_resolution # 16
-        self.output_dim = num_levels * level_dim # 16 * 2 = 32
-        self.gridtype = gridtype # 'tiled'
+        self.per_level_scale = per_level_scale # multiply resolution by this scale at each level. # 1.381912879967776 (both)
+        self.log2_hashmap_size = log2_hashmap_size # 16 (both)
+        self.base_resolution = base_resolution # 16 (both)
+        self.output_dim = num_levels * level_dim # 16 * 2 = 32 (both)
+        self.gridtype = gridtype # 'tiled' (both)
         self.gridtype_id = _gridtype_to_id[gridtype] # "tiled" or "hash" # {'hash': 0, 'tiled': 1}
         self.interpolation = interpolation # 'linear'
         self.interp_id = _interp_to_id[interpolation] # "linear" or "smoothstep" # {'linear': 0, 'smoothstep': 1}
@@ -131,7 +131,7 @@ class GridEncoder(nn.Module):
         self.n_params = offsets[-1] * level_dim # 903480 * 2 = tensor(1806960, dtype=torch.int32)
 
         # parameters
-        self.embeddings = nn.Parameter(torch.empty(offset, level_dim)) # (903480, 2) - torch.Size([903480, 2])
+        self.embeddings = nn.Parameter(torch.empty(offset, level_dim)) # (903480, 2) - torch.Size([903480, 2]) # Torso = torch.Size([555520, 2])
 
         self.reset_parameters()
 

@@ -62,12 +62,12 @@ class SHEncoder(nn.Module):
     def __init__(self, input_dim=3, degree=4):
         super().__init__()
 
-        self.input_dim = input_dim # coord dims, must be 3
-        self.degree = degree # 0 ~ 4
-        self.output_dim = degree ** 2
+        self.input_dim = input_dim # coord dims, must be 3 # 3
+        self.degree = degree # 0 ~ 4 # 4
+        self.output_dim = degree ** 2 # 16
 
-        assert self.input_dim == 3, "SH encoder only support input dim == 3"
-        assert self.degree > 0 and self.degree <= 8, "SH encoder only supports degree in [1, 8]"
+        assert self.input_dim == 3, "SH encoder only support input dim == 3" # 3
+        assert self.degree > 0 and self.degree <= 8, "SH encoder only supports degree in [1, 8]" # 4
         
     def __repr__(self):
         return f"SHEncoder: input_dim={self.input_dim} degree={self.degree}"

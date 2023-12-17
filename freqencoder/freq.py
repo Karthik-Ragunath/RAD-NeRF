@@ -56,9 +56,9 @@ class FreqEncoder(nn.Module):
     def __init__(self, input_dim=3, degree=4):
         super().__init__()
 
-        self.input_dim = input_dim
-        self.degree = degree
-        self.output_dim = input_dim + input_dim * 2 * degree
+        self.input_dim = input_dim # 2
+        self.degree = degree # 10
+        self.output_dim = input_dim + input_dim * 2 * degree # 2 + 2 * 2 * 10 = 43
         
     def __repr__(self):
         return f"FreqEncoder: input_dim={self.input_dim} degree={self.degree} output_dim={self.output_dim}"

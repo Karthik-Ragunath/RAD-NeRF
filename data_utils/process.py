@@ -244,7 +244,7 @@ def face_tracking(ori_imgs_dir):
     print(f'[INFO] ===== perform face tracking =====')
 
     image_paths = glob.glob(os.path.join(ori_imgs_dir, '*.jpg'))
-    
+
     # read one image to get H/W
     tmp_image = cv2.imread(image_paths[0], cv2.IMREAD_UNCHANGED) # [H, W, 3]
     h, w = tmp_image.shape[:2]

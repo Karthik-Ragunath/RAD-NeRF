@@ -594,27 +594,27 @@ class Trainer(object):
                  scheduler_update_every_step=False, # whether to call scheduler.step() after every train step
                  ):
         
-        self.name = name
+        self.name = name # 'ngp'
         self.opt = opt
-        self.mute = mute
-        self.metrics = metrics
-        self.local_rank = local_rank
-        self.world_size = world_size
-        self.workspace = workspace
-        self.ema_decay = ema_decay
-        self.ema_update_interval = ema_update_interval
-        self.fp16 = fp16
-        self.best_mode = best_mode
-        self.use_loss_as_metric = use_loss_as_metric
-        self.report_metric_at_train = report_metric_at_train
-        self.max_keep_ckpt = max_keep_ckpt
-        self.eval_interval = eval_interval
-        self.use_checkpoint = use_checkpoint
-        self.use_tensorboardX = use_tensorboardX
-        self.flip_finetune_lips = self.opt.finetune_lips
-        self.time_stamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-        self.scheduler_update_every_step = scheduler_update_every_step
-        self.device = device if device is not None else torch.device(f'cuda:{local_rank}' if torch.cuda.is_available() else 'cpu')
+        self.mute = mute # False
+        self.metrics = metrics # []
+        self.local_rank = local_rank # 0
+        self.world_size = world_size # 1
+        self.workspace = workspace # 'trial_obama/'
+        self.ema_decay = ema_decay # None
+        self.ema_update_interval = ema_update_interval # 1000
+        self.fp16 = fp16 # True
+        self.best_mode = best_mode # 'min'
+        self.use_loss_as_metric = use_loss_as_metric # True
+        self.report_metric_at_train = report_metric_at_train # False
+        self.max_keep_ckpt = max_keep_ckpt # 2
+        self.eval_interval = eval_interval # 1
+        self.use_checkpoint = use_checkpoint # 'pretrained/obama_eo.pth'
+        self.use_tensorboardX = use_tensorboardX # True
+        self.flip_finetune_lips = self.opt.finetune_lips # False
+        self.time_stamp = time.strftime("%Y-%m-%d_%H-%M-%S") # '2023-12-17_12-27-41'
+        self.scheduler_update_every_step = scheduler_update_every_step # False
+        self.device = device if device is not None else torch.device(f'cuda:{local_rank}' if torch.cuda.is_available() else 'cpu') # device(type='cuda')
         self.console = Console()
 
         model.to(self.device)
@@ -1447,3 +1447,84 @@ zs tensor([[1., 1., 1.,  ..., 1., 1., 1.]], device='cuda:0')
 xs tensor([[-0.1871, -0.1863, -0.1854,  ...,  0.1854,  0.1863,  0.1871]], device='cuda:0')
 ys tensor([[-0.1871, -0.1871, -0.1871,  ...,  0.1871,  0.1871,  0.1871]], device='cuda:0')
 '''
+
+# self.opt
+# Namespace(pose='data/obama.json', aud='data/intro_eo.npy', bg_img='white', O=True, data_range=[0, -1], workspace='trial_obama/', seed=0, ckpt='pretrained/obama_eo.pth', num_rays=65536, cuda_ray=True, max_steps=16, num_steps=16, upsample_steps=0, update_extra_interval=16, max_ray_batch=4096, fp16=True, lambda_amb=0.1, fbg=False, exp_eye=True, fix_eye=-1, smooth_eye=True, torso_shrink=0.8, color_space='srgb', bound=1, scale=4, offset=[0, 0, 0], dt_gamma=0.00390625, min_near=0.05, density_thresh=10, density_thresh_torso=0.01, patch_size=1, finetune_lips=False, smooth_lips=True, torso=True, head_ckpt='', gui=False, W=450, H=450, radius=3.35, fovy=21.24, max_spp=1, att=2, emb=False, ind_dim=4, ind_num=10000, ind_dim_torso=8, amb_dim=2, part=False, part2=False, train_camera=False, smooth_path=True, smooth_path_window=7, asr=False, asr_wav='', asr_play=False, asr_model='cpierse/wav2vec2-large-xlsr-53-esperanto', asr_save_feats=False, fps=50, l=10, m=50, r=10, test=True, test_train=False)
+
+# NeRFNetwork(
+#   (audio_net): AudioNet(
+#     (encoder_conv): Sequential(
+#       (0): Conv1d(44, 32, kernel_size=(3,), stride=(2,), padding=(1,))
+#       (1): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (2): Conv1d(32, 32, kernel_size=(3,), stride=(2,), padding=(1,))
+#       (3): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (4): Conv1d(32, 64, kernel_size=(3,), stride=(2,), padding=(1,))
+#       (5): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (6): Conv1d(64, 64, kernel_size=(3,), stride=(2,), padding=(1,))
+#       (7): LeakyReLU(negative_slope=0.02, inplace=True)
+#     )
+#     (encoder_fc1): Sequential(
+#       (0): Linear(in_features=64, out_features=64, bias=True)
+#       (1): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (2): Linear(in_features=64, out_features=64, bias=True)
+#     )
+#   )
+#   (audio_att_net): AudioAttNet(
+#     (attentionConvNet): Sequential(
+#       (0): Conv1d(64, 16, kernel_size=(3,), stride=(1,), padding=(1,))
+#       (1): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (2): Conv1d(16, 8, kernel_size=(3,), stride=(1,), padding=(1,))
+#       (3): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (4): Conv1d(8, 4, kernel_size=(3,), stride=(1,), padding=(1,))
+#       (5): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (6): Conv1d(4, 2, kernel_size=(3,), stride=(1,), padding=(1,))
+#       (7): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (8): Conv1d(2, 1, kernel_size=(3,), stride=(1,), padding=(1,))
+#       (9): LeakyReLU(negative_slope=0.02, inplace=True)
+#     )
+#     (attentionNet): Sequential(
+#       (0): Linear(in_features=8, out_features=8, bias=True)
+#       (1): Softmax(dim=1)
+#     )
+#   )
+#   (encoder): GridEncoder: input_dim=3 num_levels=16 level_dim=2 resolution=16 -> 2048 per_level_scale=1.3819 params=(903480, 2) gridtype=tiled align_corners=False interpolation=linear
+#   (encoder_ambient): GridEncoder: input_dim=2 num_levels=16 level_dim=2 resolution=16 -> 2048 per_level_scale=1.3819 params=(555520, 2) gridtype=tiled align_corners=False interpolation=linear
+#   (ambient_net): MLP(
+#     (net): ModuleList(
+#       (0): Linear(in_features=96, out_features=64, bias=False)
+#       (1): Linear(in_features=64, out_features=64, bias=False)
+#       (2): Linear(in_features=64, out_features=2, bias=False)
+#     )
+#   )
+#   (sigma_net): MLP(
+#     (net): ModuleList(
+#       (0): Linear(in_features=65, out_features=64, bias=False)
+#       (1): Linear(in_features=64, out_features=64, bias=False)
+#       (2): Linear(in_features=64, out_features=65, bias=False)
+#     )
+#   )
+#   (encoder_dir): SHEncoder: input_dim=3 degree=4
+#   (color_net): MLP(
+#     (net): ModuleList(
+#       (0): Linear(in_features=84, out_features=64, bias=False)
+#       (1): Linear(in_features=64, out_features=3, bias=False)
+#     )
+#   )
+#   (torso_deform_encoder): FreqEncoder: input_dim=2 degree=10 output_dim=42
+#   (pose_encoder): FreqEncoder: input_dim=6 degree=4 output_dim=54
+#   (torso_deform_net): MLP(
+#     (net): ModuleList(
+#       (0): Linear(in_features=104, out_features=64, bias=False)
+#       (1): Linear(in_features=64, out_features=64, bias=False)
+#       (2): Linear(in_features=64, out_features=2, bias=False)
+#     )
+#   )
+#   (torso_encoder): GridEncoder: input_dim=2 num_levels=16 level_dim=2 resolution=16 -> 2048 per_level_scale=1.3819 params=(555520, 2) gridtype=tiled align_corners=False interpolation=linear
+#   (torso_net): MLP(
+#     (net): ModuleList(
+#       (0): Linear(in_features=136, out_features=32, bias=False)
+#       (1): Linear(in_features=32, out_features=32, bias=False)
+#       (2): Linear(in_features=32, out_features=4, bias=False)
+#     )
+#   )
+# )

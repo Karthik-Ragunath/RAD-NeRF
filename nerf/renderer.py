@@ -65,26 +65,26 @@ class NeRFRenderer(nn.Module):
         super().__init__()
 
         self.opt = opt
-        self.bound = opt.bound
-        self.cascade = 1 + math.ceil(math.log2(opt.bound))
-        self.grid_size = 128
-        self.density_scale = 1
+        self.bound = opt.bound # 1
+        self.cascade = 1 + math.ceil(math.log2(opt.bound)) # 1
+        self.grid_size = 128 # 128
+        self.density_scale = 1 # 1
 
-        self.min_near = opt.min_near
-        self.density_thresh = opt.density_thresh
-        self.density_thresh_torso = opt.density_thresh_torso
+        self.min_near = opt.min_near # 0.05
+        self.density_thresh = opt.density_thresh # 10
+        self.density_thresh_torso = opt.density_thresh_torso # 0.01
 
-        self.exp_eye = opt.exp_eye
-        self.test_train = opt.test_train
-        self.smooth_lips = opt.smooth_lips
+        self.exp_eye = opt.exp_eye # True
+        self.test_train = opt.test_train # False
+        self.smooth_lips = opt.smooth_lips # True
 
-        self.torso = opt.torso
-        self.cuda_ray = opt.cuda_ray
+        self.torso = opt.torso # True
+        self.cuda_ray = opt.cuda_ray # True
 
         # prepare aabb with a 6D tensor (xmin, ymin, zmin, xmax, ymax, zmax)
         # NOTE: aabb (can be rectangular) is only used to generate points, we still rely on bound (always cubic) to calculate density grid and hashing.
-        aabb_train = torch.FloatTensor([-opt.bound, -opt.bound/2, -opt.bound, opt.bound, opt.bound/2, opt.bound])
-        aabb_infer = aabb_train.clone()
+        aabb_train = torch.FloatTensor([-opt.bound, -opt.bound/2, -opt.bound, opt.bound, opt.bound/2, opt.bound]) # tensor([-1.0000, -0.5000, -1.0000,  1.0000,  0.5000,  1.0000])
+        aabb_infer = aabb_train.clone() # tensor([-1.0000, -0.5000, -1.0000,  1.0000,  0.5000,  1.0000])
         self.register_buffer('aabb_train', aabb_train)
         self.register_buffer('aabb_infer', aabb_infer)
 
@@ -93,15 +93,15 @@ class NeRFRenderer(nn.Module):
 
         self.individual_dim = opt.ind_dim # 4
         if self.individual_dim > 0:
-            self.individual_codes = nn.Parameter(torch.randn(self.individual_num, self.individual_dim) * 0.1) 
+            self.individual_codes = nn.Parameter(torch.randn(self.individual_num, self.individual_dim) * 0.1) # torch.Size([10000, 4])
         
         if self.torso:
-            self.individual_dim_torso = opt.ind_dim_torso
+            self.individual_dim_torso = opt.ind_dim_torso # 8
             if self.individual_dim_torso > 0:
-                self.individual_codes_torso = nn.Parameter(torch.randn(self.individual_num, self.individual_dim_torso) * 0.1) 
+                self.individual_codes_torso = nn.Parameter(torch.randn(self.individual_num, self.individual_dim_torso) * 0.1) # torch.Size([10000, 8])
 
         # optimize camera pose
-        self.train_camera = self.opt.train_camera
+        self.train_camera = self.opt.train_camera # False
         if self.train_camera:
             self.camera_dR = nn.Parameter(torch.zeros(self.individual_num, 3)) # euler angle
             self.camera_dT = nn.Parameter(torch.zeros(self.individual_num, 3)) # xyz offset
@@ -109,27 +109,27 @@ class NeRFRenderer(nn.Module):
         # extra state for cuda raymarching
     
         # 3D head density grid
-        density_grid = torch.zeros([self.cascade, self.grid_size ** 3]) # [CAS, H * H * H]
-        density_bitfield = torch.zeros(self.cascade * self.grid_size ** 3 // 8, dtype=torch.uint8) # [CAS * H * H * H // 8]
+        density_grid = torch.zeros([self.cascade, self.grid_size ** 3]) # [CAS, H * H * H] # torch.Size([1, 2097152]) # self.grid_size = 128 # self.cascade = 1
+        density_bitfield = torch.zeros(self.cascade * self.grid_size ** 3 // 8, dtype=torch.uint8) # [CAS * H * H * H // 8] # torch.Size([262144])
         self.register_buffer('density_grid', density_grid)
         self.register_buffer('density_bitfield', density_bitfield)
         self.mean_density = 0
         self.iter_density = 0
 
         # 2D torso density grid
-        if self.torso:
-            density_grid_torso = torch.zeros([self.grid_size ** 2]) # [H * H]
+        if self.torso: # True
+            density_grid_torso = torch.zeros([self.grid_size ** 2]) # [H * H] # torch.Size([16384])
             self.register_buffer('density_grid_torso', density_grid_torso)
         self.mean_density_torso = 0
 
         # step counter
-        step_counter = torch.zeros(16, 2, dtype=torch.int32) # 16 is hardcoded for averaging...
+        step_counter = torch.zeros(16, 2, dtype=torch.int32) # 16 is hardcoded for averaging... # torch.Size([16, 2])
         self.register_buffer('step_counter', step_counter)
         self.mean_count = 0
         self.local_step = 0
         
         # decay for enc_a
-        if self.smooth_lips:
+        if self.smooth_lips: # True
             self.enc_a = None
     
     def forward(self, x, d):

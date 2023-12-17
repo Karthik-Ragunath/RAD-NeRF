@@ -25,7 +25,7 @@ class AudioAttNet(nn.Module):
             nn.LeakyReLU(0.02, True)
         )
         self.attentionNet = nn.Sequential(
-            nn.Linear(in_features=self.seq_len, out_features=self.seq_len, bias=True),
+            nn.Linear(in_features=self.seq_len, out_features=self.seq_len, bias=True), # self.seq_len = 8
             nn.Softmax(dim=1)
         )
 
@@ -69,10 +69,10 @@ class AudioNet(nn.Module):
 class MLP(nn.Module):
     def __init__(self, dim_in, dim_out, dim_hidden, num_layers):
         super().__init__()
-        self.dim_in = dim_in # 96
-        self.dim_out = dim_out # 2
-        self.dim_hidden = dim_hidden # 64
-        self.num_layers = num_layers # 3
+        self.dim_in = dim_in # 96 # 65
+        self.dim_out = dim_out # 2 # 65
+        self.dim_hidden = dim_hidden # 64 # 64
+        self.num_layers = num_layers # 3 # 3
 
         net = []
         for l in range(num_layers):
@@ -109,20 +109,20 @@ class NeRFNetwork(NeRFRenderer):
         super().__init__(opt)
 
         # audio embedding
-        self.emb = self.opt.emb
+        self.emb = self.opt.emb # False
 
         if 'esperanto' in self.opt.asr_model:
-            self.audio_in_dim = 44
+            self.audio_in_dim = 44 # 44
         elif 'deepspeech' in self.opt.asr_model:
             self.audio_in_dim = 29
         else:
             self.audio_in_dim = 32
             
-        if self.emb:
+        if self.emb: # False
             self.embedding = nn.Embedding(self.audio_in_dim, self.audio_in_dim) # 44, 44
 
         # audio network
-        self.audio_dim = audio_dim    
+        self.audio_dim = audio_dim # 64
         self.audio_net = AudioNet(self.audio_in_dim, self.audio_dim) # 44, 64 # CNN -> reduce spatial to 1, followed by FC layer
 
         self.att = self.opt.att # 2
@@ -131,7 +131,7 @@ class NeRFNetwork(NeRFRenderer):
 
         # ambient network
         self.encoder, self.in_dim = get_encoder('tiledgrid', input_dim=3, num_levels=16, level_dim=2, base_resolution=16, log2_hashmap_size=16, desired_resolution=2048 * self.bound, interpolation='linear') # self.bound = 1 # GridEncoder, 32
-        self.encoder_ambient, self.in_dim_ambient = get_encoder('tiledgrid', input_dim=ambient_dim, num_levels=16, level_dim=2, base_resolution=16, log2_hashmap_size=16, desired_resolution=2048, interpolation='linear') # GridEncoder, 32
+        self.encoder_ambient, self.in_dim_ambient = get_encoder('tiledgrid', input_dim=ambient_dim, num_levels=16, level_dim=2, base_resolution=16, log2_hashmap_size=16, desired_resolution=2048, interpolation='linear') # GridEncoder, 32 # ambient_dim = 2
 
         self.num_layers_ambient = num_layers_ambient # 3
         self.hidden_dim_ambient = hidden_dim_ambient # 64
@@ -144,16 +144,16 @@ class NeRFNetwork(NeRFRenderer):
         self.hidden_dim = hidden_dim # 64
         self.geo_feat_dim = geo_feat_dim # 64
 
-        self.eye_dim = 1 if self.exp_eye else 0 # self.exp_eye = True
+        self.eye_dim = 1 if self.exp_eye else 0 # self.exp_eye = True # self.eye_dim = 1
 
-        self.sigma_net = MLP(self.in_dim + self.in_dim_ambient + self.eye_dim, 1 + self.geo_feat_dim, self.hidden_dim, self.num_layers) # 65, 65, 64, 3
+        self.sigma_net = MLP(self.in_dim + self.in_dim_ambient + self.eye_dim, 1 + self.geo_feat_dim, self.hidden_dim, self.num_layers) # 65 (32 + 32 + 1), 65, 64, 3
 
         # color network
         self.num_layers_color = num_layers_color # 2
         self.hidden_dim_color = hidden_dim_color # 64
         self.encoder_dir, self.in_dim_dir = get_encoder('spherical_harmonics') # SHEncoder: input_dim=3 degree=4, 16
         
-        self.color_net = MLP(self.in_dim_dir + self.geo_feat_dim + self.individual_dim, 3, self.hidden_dim_color, self.num_layers_color) # 84, 3, 64, 2
+        self.color_net = MLP(self.in_dim_dir + self.geo_feat_dim + self.individual_dim, 3, self.hidden_dim_color, self.num_layers_color) # (16 + 64 + 4) 84, 3, 64, 2
 
         if self.torso: # True
             # torso deform network
