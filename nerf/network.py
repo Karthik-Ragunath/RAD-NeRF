@@ -191,30 +191,30 @@ class NeRFNetwork(NeRFRenderer):
         # c: [1, ind_dim], individual code
 
         # test: shrink x
-        x = x * self.opt.torso_shrink
+        x = x * self.opt.torso_shrink # self.opt.torso_shrink = 0.8, x.shape = torch.Size([65793, 2])
 
         # deformation-based 
-        enc_pose = self.pose_encoder(poses)
-        enc_x = self.torso_deform_encoder(x)
+        enc_pose = self.pose_encoder(poses) # torch.Size([1, 54])
+        enc_x = self.torso_deform_encoder(x) # torch.Size([65793, 42])
 
         if c is not None:
-            h = torch.cat([enc_x, enc_pose.repeat(x.shape[0], 1), c.repeat(x.shape[0], 1)], dim=-1)
+            h = torch.cat([enc_x, enc_pose.repeat(x.shape[0], 1), c.repeat(x.shape[0], 1)], dim=-1) # torch.Size([65793, 104])
         else:
             h = torch.cat([enc_x, enc_pose.repeat(x.shape[0], 1)], dim=-1)
 
-        dx = self.torso_deform_net(h)
+        dx = self.torso_deform_net(h) # dx.shape = torch.Size([65793, 2])
 
-        x = (x + dx).clamp(-1, 1)
+        x = (x + dx).clamp(-1, 1) # torch.Size([65793, 2])
 
-        x = self.torso_encoder(x, bound=1)
+        x = self.torso_encoder(x, bound=1) # torch.Size([65793, 32])
 
         # h = torch.cat([x, h, enc_a.repeat(x.shape[0], 1)], dim=-1)
-        h = torch.cat([x, h], dim=-1)
+        h = torch.cat([x, h], dim=-1) # torch.Size([65793, 136])
 
-        h = self.torso_net(h)
+        h = self.torso_net(h) # torch.Size([65793, 4])
 
-        alpha = torch.sigmoid(h[..., :1])
-        color = torch.sigmoid(h[..., 1:])
+        alpha = torch.sigmoid(h[..., :1]) # torch.Size([65793, 1])
+        color = torch.sigmoid(h[..., 1:]) # torch.Size([65793, 3])
 
         return alpha, color, dx
 

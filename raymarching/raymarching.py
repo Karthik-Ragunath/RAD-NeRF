@@ -377,7 +377,7 @@ class _march_rays(Function):
         rays_o = rays_o.contiguous().view(-1, 3) # torch.Size([202500, 3])
         rays_d = rays_d.contiguous().view(-1, 3) # torch.Size([202500, 3])
 
-        M = n_alive * n_step # 202500, n_step = 1 # 189618, n_step = 2, n_alive = 63206
+        M = n_alive * n_step # 202500, n_step = 1 # 189618, n_step = 2, n_alive = 63206 # iter 5 - M: 201216, n_alive = 40232
 
         if align > 0: # 128
             M += align - (M % align) # 202624 # make num_rays divisble by align - 128 # iter - 2: M = 189696
@@ -475,3 +475,47 @@ composite_rays = _composite_rays.apply
 # tensor(0., device='cuda:0')
 # torch.count_nonzero(noises)
 # tensor(0, device='cuda:0')
+
+# iter3:
+# torch.count_nonzero(xyzs, dim=0)
+# tensor([171071, 171071, 171071], device='cuda:0')
+# torch.count_nonzero(deltas, dim=0)
+# tensor([171071, 171071], device='cuda:0')
+# torch.count_nonzero(dirs, dim=0)
+# tensor([171071, 171071, 171071], device='cuda:0')
+# torch.max(xyzs, dim=0)
+# torch.return_types.max(
+# values=tensor([0.5625, 0.1239, 0.4062], device='cuda:0'),
+# indices=tensor([   108, 160260, 118773], device='cuda:0'))
+# torch.max(dirs, dim=0)
+# torch.return_types.max(
+# values=tensor([0.1342, 0.0000, 0.1651], device='cuda:0'),
+# indices=tensor([    75,      0, 101436], device='cuda:0'))
+
+# iter4:
+# torch.count_nonzero(xyzs, dim=0)
+# tensor([152780, 152780, 152780], device='cuda:0')
+# torch.count_nonzero(deltas, dim=0)
+# tensor([152780, 152780], device='cuda:0')
+# torch.count_nonzero(dirs, dim=0)
+# tensor([152780, 152780, 152780], device='cuda:0')
+# torch.max(xyzs, dim=0)
+# torch.return_types.max(
+# values=tensor([0.5611, 0.0433, 0.4055], device='cuda:0'),
+# indices=tensor([     9, 144984, 104811], device='cuda:0'))
+# torch.max(dirs, dim=0)
+# torch.return_types.max(
+# values=tensor([0.1322, 0.0000, 0.1615], device='cuda:0'),
+# indices=tensor([     9,      0, 104811], device='cuda:0'))
+# torch.max(deltas, dim=0)
+# torch.return_types.max(
+# values=tensor([0.0271, 3.9440], device='cuda:0'),
+# indices=tensor([     3, 104811], device='cuda:0'))
+# torch.argmax(deltas)
+# tensor(209623, device='cuda:0')
+# torch.argmax(xyzs)
+# tensor(27, device='cuda:0')
+# torch.argmax(dirs)
+# tensor(314435, device='cuda:0')
+
+

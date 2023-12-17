@@ -860,7 +860,7 @@ class Trainer(object):
         else:
             bg_color = data['bg_color'] # torch.Size([1, 202500, 3])
 
-        outputs = self.model.render(rays_o, rays_d, auds, bg_coords, poses, eye=eye, index=index, staged=True, bg_color=bg_color, perturb=perturb, **vars(self.opt))
+        outputs = self.model.render(rays_o, rays_d, auds, bg_coords, poses, eye=eye, index=index, staged=True, bg_color=bg_color, perturb=perturb, **vars(self.opt)) # outputs.keys() = dict_keys(['deform', 'torso_alpha', 'torso_color', 'depth', 'image'])
 
         pred_rgb = outputs['image'].reshape(-1, H, W, 3) # H, W - 450 # torch.Size([1, 450, 450, 3])
         pred_depth = outputs['depth'].reshape(-1, H, W) # torch.Size([1, 450, 450])
@@ -932,7 +932,7 @@ class Trainer(object):
         
         self.log(f"==> Start Test, save results to {save_path}")
 
-        pbar = tqdm.tqdm(total=len(loader) * loader.batch_size, bar_format='{percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]') # 588 * 1 = 588
+        pbar = tqdm.tqdm(total=len(loader) * loader.batch_size, bar_format='{percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]') # 588 * 1 = 588 # loader.batch_size = 1, len(loader) = 588
         self.model.eval()
 
         all_preds = []
@@ -944,21 +944,21 @@ class Trainer(object):
                 with torch.cuda.amp.autocast(enabled=self.fp16):
                     preds, preds_depth = self.test_step(data) # dict_keys(['auds', 'index', 'H', 'W', 'rays_o', 'rays_d', 'eye', 'bg_color', 'bg_coords', 'poses', 'poses_matrix'])   
                 
-                path = os.path.join(save_path, f'{name}_{i:04d}_rgb.png')
-                path_depth = os.path.join(save_path, f'{name}_{i:04d}_depth.png')
+                path = os.path.join(save_path, f'{name}_{i:04d}_rgb.png') # 'trial_obama/results/ngp_ep0028_0000_rgb.png'
+                path_depth = os.path.join(save_path, f'{name}_{i:04d}_depth.png') # 'trial_obama/results/ngp_ep0028_0000_depth.png'
 
                 #self.log(f"[INFO] saving test image to {path}")
 
-                if self.opt.color_space == 'linear':
+                if self.opt.color_space == 'linear': # 'srgb'
                     preds = linear_to_srgb(preds)
 
-                pred = preds[0].detach().cpu().numpy()
-                pred = (pred * 255).astype(np.uint8)
+                pred = preds[0].detach().cpu().numpy() # (450, 450, 3) # len(preds) = 1
+                pred = (pred * 255).astype(np.uint8) # (450, 450, 3)
 
-                pred_depth = preds_depth[0].detach().cpu().numpy()
-                pred_depth = (pred_depth * 255).astype(np.uint8)
+                pred_depth = preds_depth[0].detach().cpu().numpy() # (450, 450) # len(preds_depth) = 1
+                pred_depth = (pred_depth * 255).astype(np.uint8) # (450, 450)
 
-                if write_image:
+                if write_image: # False
                     imageio.imwrite(path, pred)
                     imageio.imwrite(path_depth, pred_depth)
 
@@ -967,8 +967,8 @@ class Trainer(object):
                 pbar.update(loader.batch_size)
 
         # write video
-        all_preds = np.stack(all_preds, axis=0)
-        imageio.mimwrite(os.path.join(save_path, f'{name}.mp4'), all_preds, fps=25, quality=8, macro_block_size=1)
+        all_preds = np.stack(all_preds, axis=0) # len(all_preds) = 588
+        imageio.mimwrite(os.path.join(save_path, f'{name}.mp4'), all_preds, fps=25, quality=8, macro_block_size=1) # 'trial_obama/results/ngp_ep0028.mp4'
 
         self.log(f"==> Finished Test.")
     

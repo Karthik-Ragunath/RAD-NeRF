@@ -262,13 +262,13 @@ class NeRFRenderer(nn.Module):
                 step += n_step
             
         # background
-        if bg_color is None:
+        if bg_color is None: # torch.Size([1, 202500, 3])
             bg_color = 1
 
         # first mix torso with background
         if self.torso:
             # torso ind code
-            if self.individual_dim_torso > 0:
+            if self.individual_dim_torso > 0: # self.individual_dim_torso = 8
                 if self.training:
                     ind_code_torso = self.individual_codes_torso[index]
                 # use a fixed ind code for the unknown test data.
@@ -278,40 +278,40 @@ class NeRFRenderer(nn.Module):
                 ind_code_torso = None
             
             # 2D density grid for acceleration...
-            density_thresh_torso = min(self.density_thresh_torso, self.mean_density_torso)
-            occupancy = F.grid_sample(self.density_grid_torso.view(1, 1, self.grid_size, self.grid_size), bg_coords.view(1, -1, 1, 2), align_corners=True).view(-1)
-            mask = occupancy > density_thresh_torso
+            density_thresh_torso = min(self.density_thresh_torso, self.mean_density_torso) # 0.01, self.mean_density_torso = 0.293754518032074, self.density_thresh_torso = 0.01
+            occupancy = F.grid_sample(self.density_grid_torso.view(1, 1, self.grid_size, self.grid_size), bg_coords.view(1, -1, 1, 2), align_corners=True).view(-1) # torch.Size([202500]), self.density_grid_torso.view(1, 1, self.grid_size, self.grid_size).shape = torch.Size([1, 1, 128, 128]), bg_coords.view(1, -1, 1, 2).shape = torch.Size([1, 202500, 1, 2]), self.grid_size = 128
+            mask = occupancy > density_thresh_torso # torch.Size([202500])
 
             # masked query of torso
-            torso_alpha = torch.zeros([N, 1], device=device)
-            torso_color = torch.zeros([N, 3], device=device)
+            torso_alpha = torch.zeros([N, 1], device=device) # torch.Size([202500, 1])
+            torso_color = torch.zeros([N, 3], device=device) # torch.Size([202500, 3])
 
             if mask.any():
-                torso_alpha_mask, torso_color_mask, deform = self.forward_torso(bg_coords[mask], poses, enc_a, ind_code_torso)
+                torso_alpha_mask, torso_color_mask, deform = self.forward_torso(bg_coords[mask], poses, enc_a, ind_code_torso) # torch.Size([65793, 1]), torch.Size([65793, 3]), torch.Size([65793, 2])
 
-                torso_alpha[mask] = torso_alpha_mask.float()
-                torso_color[mask] = torso_color_mask.float()
+                torso_alpha[mask] = torso_alpha_mask.float() # torch.Size([65793, 1]), mask.shape = torch.Size([202500])
+                torso_color[mask] = torso_color_mask.float() # torso_color[mask].shape = torch.Size([65793, 3]), 
 
                 results['deform'] = deform
             
             # first mix torso with background
             
-            bg_color = torso_color * torso_alpha + bg_color * (1 - torso_alpha)
+            bg_color = torso_color * torso_alpha + bg_color * (1 - torso_alpha) # torch.Size([1, 202500, 3])
 
-            results['torso_alpha'] = torso_alpha
-            results['torso_color'] = bg_color
+            results['torso_alpha'] = torso_alpha # torch.Size([202500, 1])
+            results['torso_color'] = bg_color # torch.Size([1, 202500, 3])
 
             # print(torso_alpha.shape, torso_alpha.max().item(), torso_alpha.min().item())
 
-        image = image + (1 - weights_sum).unsqueeze(-1) * bg_color # torch.Size([1, 202500, 3])
+        image = image + (1 - weights_sum).unsqueeze(-1) * bg_color # torch.Size([1, 202500, 3]) # weights_sum.shape = torch.Size([202500])
         image = image.view(*prefix, 3) # torch.Size([1, 202500, 3])
-        image = image.clamp(0, 1)
+        image = image.clamp(0, 1) # torch.Size([1, 202500, 3])
 
-        depth = torch.clamp(depth - nears, min=0) / (fars - nears) # torch.Size([202500]) # fars, nears - torch.Size([202500])
-        depth = depth.view(*prefix) # torch.Size([1, 202500])
+        depth = torch.clamp(depth - nears, min=0) / (fars - nears) # torch.Size([202500]) # fars, nears, depth - torch.Size([202500])
+        depth = depth.view(*prefix) # torch.Size([1, 202500]), prefix.shape = torch.Size([1, 202500])
         
         results['depth'] = depth
-        results['image'] = image # head_image if train, else com_image
+        results['image'] = image # torch.Size([1, 202500, 3]), head_image if train, else com_image
 
         return results
 
@@ -535,3 +535,43 @@ class NeRFRenderer(nn.Module):
             results = _run(rays_o, rays_d, auds, bg_coords, poses, **kwargs)
 
         return results
+    
+# iter 1:
+# torch.count_nonzero(dirs, dim=0)
+# tensor([63206, 63206, 63206], device='cuda:0')
+# torch.count_nonzero(xyzs, dim=0)
+# tensor([63206, 63206, 63206], device='cuda:0')
+# torch.count_nonzero(deltas, dim=0)
+# tensor([63206, 63206], device='cuda:0')
+# rays_alive.shape (indices)
+# torch.Size([63206])
+
+# iter2:
+# torch.count_nonzero(dirs, dim=0)
+# tensor([181390, 181390, 181390], device='cuda:0')
+# torch.count_nonzero(xyzs, dim=0)
+# tensor([181390, 181390, 181390], device='cuda:0')
+# torch.count_nonzero(deltas, dim=0)
+# tensor([181390, 181390], device='cuda:0')
+# rays_alive.shape
+# torch.Size([59030])
+
+# iter3:
+# torch.count_nonzero(xyzs, dim=0)
+# tensor([171071, 171071, 171071], device='cuda:0')
+# torch.count_nonzero(deltas, dim=0)
+# tensor([171071, 171071], device='cuda:0')
+# torch.count_nonzero(dirs, dim=0)
+# tensor([171071, 171071, 171071], device='cuda:0')
+# rays_alive.shape
+# torch.Size([52846])
+
+# iter4:
+# torch.count_nonzero(xyzs, dim=0)
+# tensor([152780, 152780, 152780], device='cuda:0')
+# torch.count_nonzero(deltas, dim=0)
+# tensor([152780, 152780], device='cuda:0')
+# torch.count_nonzero(dirs, dim=0)
+# tensor([152780, 152780, 152780], device='cuda:0')
+# rays_alive.shape
+# torch.Size([40232])
