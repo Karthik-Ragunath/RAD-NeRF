@@ -23,28 +23,28 @@ class _near_far_from_aabb(Function):
         ''' near_far_from_aabb, CUDA implementation
         Calculate rays' intersection time (near and far) with aabb
         Args:
-            rays_o: float, [N, 3]
-            rays_d: float, [N, 3]
-            aabb: float, [6], (xmin, ymin, zmin, xmax, ymax, zmax)
-            min_near: float, scalar
+            rays_o: float, [N, 3] # torch.Size([202500, 3])
+            rays_d: float, [N, 3] # torch.Size([202500, 3])
+            aabb: float, [6], (xmin, ymin, zmin, xmax, ymax, zmax) # tensor([-1.0000, -0.5000, -1.0000,  1.0000,  0.5000,  1.0000], device='cuda:0')
+            min_near: float, scalar 0.05
         Returns:
             nears: float, [N]
             fars: float, [N]
         '''
-        if not rays_o.is_cuda: rays_o = rays_o.cuda()
-        if not rays_d.is_cuda: rays_d = rays_d.cuda()
+        if not rays_o.is_cuda: rays_o = rays_o.cuda() # torch.Size([202500, 3])
+        if not rays_d.is_cuda: rays_d = rays_d.cuda() # torch.Size([202500, 3])
 
         rays_o = rays_o.contiguous().view(-1, 3)
         rays_d = rays_d.contiguous().view(-1, 3)
 
-        N = rays_o.shape[0] # num rays
+        N = rays_o.shape[0] # num rays # 202500
 
-        nears = torch.empty(N, dtype=rays_o.dtype, device=rays_o.device)
-        fars = torch.empty(N, dtype=rays_o.dtype, device=rays_o.device)
+        nears = torch.empty(N, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202500])
+        fars = torch.empty(N, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202500])
 
         _backend.near_far_from_aabb(rays_o, rays_d, aabb, N, min_near, nears, fars)
 
-        return nears, fars
+        return nears, fars # torch.Size([202500]), torch.Size([202500])
 
 near_far_from_aabb = _near_far_from_aabb.apply
 
@@ -435,3 +435,16 @@ class _composite_rays(Function):
 
 
 composite_rays = _composite_rays.apply
+
+# nears
+# tensor([2.9392, 2.9389, 2.9386,  ..., 3.0223, 3.0229, 3.0235], device='cuda:0')
+# fars
+# tensor([3.9609, 3.9605, 3.9601,  ..., 4.0729, 4.0737, 4.0745], device='cuda:0')
+# torch.max(nears)
+# tensor(3.0235, device='cuda:0')
+# torch.max(fars)
+# tensor(4.0745, device='cuda:0')
+# torch.argmax(nears)
+# tensor(202499, device='cuda:0')
+# torch.argmax(fars)
+# tensor(202499, device='cuda:0')

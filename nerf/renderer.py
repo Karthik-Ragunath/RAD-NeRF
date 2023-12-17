@@ -167,7 +167,7 @@ class NeRFRenderer(nn.Module):
         bg_coords = bg_coords.contiguous().view(-1, 2) # bg_coords.shape - torch.Size([202500, 2])
 
         # only add camera offset at training!
-        if self.train_camera and (self.training or self.test_train):
+        if self.train_camera and (self.training or self.test_train): # self.train_camera = False
             dT = self.camera_dT[index] # [1, 3]
             dR = euler_angles_to_matrix(self.camera_dR[index] / 180 * np.pi + 1e-8).squeeze(0) # [1, 3] --> [3, 3]
             
@@ -511,7 +511,7 @@ class NeRFRenderer(nn.Module):
         _run = self.run_cuda
         
         B, N = rays_o.shape[:2] # (1, 202500)
-        device = rays_o.device
+        device = rays_o.device # device(type='cuda', index=0)
 
         # never stage when cuda_ray
         if staged and not self.cuda_ray: # True and not True

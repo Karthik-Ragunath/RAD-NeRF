@@ -260,20 +260,20 @@ class NeRFDataset_Test:
             results['auds'] = auds # torch.Size([8, 44, 16])
 
         # head pose and bg image may mirror (replay --> <-- --> <--).
-        index[0] = self.mirror_index(index[0])
+        index[0] = self.mirror_index(index[0]) # 0
 
         poses = self.poses[index].to(self.device) # [B, 4, 4] # torch.Size([1, 4, 4]), index = [0]
         
-        rays = get_rays(poses, self.intrinsics, self.H, self.W, self.num_rays, self.opt.patch_size) # rays.keys() - dict_keys(['i', 'j', 'inds', 'rays_o', 'rays_d'])
+        rays = get_rays(poses, self.intrinsics, self.H, self.W, self.num_rays, self.opt.patch_size) # rays.keys() - dict_keys(['i', 'j', 'inds', 'rays_o', 'rays_d']) rays['i'].shape = torch.Size([1, 202500]), rays['j'].shape = torch.Size([1, 202500]), rays['inds'].shape = torch.Size([1, 202500])
         # torch.Size([1, 4, 4]); self.intrinsics.shape = 4, array([1200., 1200.,  225.,  225.]); 450; 450; -1, 
-        results['index'] = index # for ind. code [0]
+        results['index'] = index # for ind. code [0] # [0]
         results['H'] = self.H # 450
         results['W'] = self.W # 450
         results['rays_o'] = rays['rays_o'] # torch.Size([1, 202500, 3])
         results['rays_d'] = rays['rays_d'] # torch.Size([1, 202500, 3])
 
         if self.opt.exp_eye:
-            results['eye'] = self.eye_area[index].to(self.device) # [1] # torch.Size([1, 1])
+            results['eye'] = self.eye_area[index].to(self.device) # [1] # torch.Size([1, 1]) # self.eye_area[index] = tensor([[0.2500]], device='cuda:0')
         else:
             results['eye'] = None
 
@@ -287,7 +287,7 @@ class NeRFDataset_Test:
         results['poses'] = convert_poses(poses) # [B, 6] # torch.Size([1, 6])
         results['poses_matrix'] = poses # [B, 4, 4] # torch.Size([1, 4, 4])
             
-        return results
+        return results # results.keys() = dict_keys(['auds', 'index', 'H', 'W', 'rays_o', 'rays_d', 'eye', 'bg_color', 'bg_coords', 'poses', 'poses_matrix'])
 
     def dataloader(self):
 

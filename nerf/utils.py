@@ -229,12 +229,12 @@ def euler_angles_to_matrix(euler_angles: torch.Tensor, convention: str='XYZ') ->
 
 @torch.cuda.amp.autocast(enabled=False)
 def convert_poses(poses):
-    # poses: [B, 4, 4]
+    # poses: [B, 4, 4] # torch.Size([1, 4, 4])
     # return [B, 3], 4 rot, 3 trans
-    out = torch.empty(poses.shape[0], 6, dtype=torch.float32, device=poses.device)
-    out[:, :3] = matrix_to_euler_angles(poses[:, :3, :3])
-    out[:, 3:] = poses[:, :3, 3]
-    return out
+    out = torch.empty(poses.shape[0], 6, dtype=torch.float32, device=poses.device) # torch.Size([1, 6])
+    out[:, :3] = matrix_to_euler_angles(poses[:, :3, :3]) # torch.Size([1, 3]) # matrix_to_euler_angles(poses[:, :3, :3]) = tensor([[ 1.5161, -0.0196,  1.5332]], device='cuda:0')
+    out[:, 3:] = poses[:, :3, 3] # torch.Size([1, 3]) # tensor([[ 0.0694,  3.3767, -0.2273]], device='cuda:0')
+    return out # torch.Size([1, 6])
 
 @torch.cuda.amp.autocast(enabled=False)
 def get_bg_coords(H, W, device):
@@ -271,7 +271,7 @@ def get_rays(poses, intrinsics, H, W, N=-1, patch_size=1, rect=None):
 
     results = {}
 
-    if N > 0:
+    if N > 0: # -1
         N = min(N, H*W)
 
         if patch_size > 1:
@@ -313,9 +313,9 @@ def get_rays(poses, intrinsics, H, W, N=-1, patch_size=1, rect=None):
     else:
         inds = torch.arange(H*W, device=device).expand([B, H*W]) # torch.Size([1, 202500]) # B = 1
     
-    results['i'] = i # torch.Size([1, 202500])
-    results['j'] = j # torch.Size([1, 202500])
-    results['inds'] = inds # inds.shape - torch.Size([1, 202500])
+    results['i'] = i # torch.Size([1, 202500]) # tensor([[  0.5000,   1.5000,   2.5000,  ..., 447.5000, 448.5000, 449.5000]], device='cuda:0')
+    results['j'] = j # torch.Size([1, 202500]) # tensor([[  0.5000,   0.5000,   0.5000,  ..., 449.5000, 449.5000, 449.5000]], device='cuda:0')
+    results['inds'] = inds # inds.shape - torch.Size([1, 202500]) # tensor([[     0,      1,      2,  ..., 202497, 202498, 202499]], device='cuda:0')
 
     zs = torch.ones_like(i) # torch.Size([1, 202500])
     xs = (i - cx) / fx * zs # torch.Size([1, 202500]) # cx 225.0 fx 1200.0
