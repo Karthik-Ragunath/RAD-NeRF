@@ -30,21 +30,21 @@ class _grid_encode(Function):
         # offsets: [L + 1], int
         # RETURN: [B, F], float
 
-        inputs = inputs.contiguous() # torch.Size([202624, 2])
+        inputs = inputs.contiguous() # torch.Size([202624, 2]), torch.Size([202624, 3])
 
-        B, D = inputs.shape # batch size, coord dim # (202624, 2)
-        L = offsets.shape[0] - 1 # level # L - 16
-        C = embeddings.shape[1] # embedding dim for each level # C - 2
-        S = np.log2(per_level_scale) # 0.4666666666666666, resolution multiplier at each level, apply log2 for later CUDA exp2f # per_level_scale - 1.381912879967776
-        H = base_resolution # base resolution, H - 16
+        B, D = inputs.shape # batch size, coord dim # (202624, 2) # (202624, 3)
+        L = offsets.shape[0] - 1 # level # L - 16 # 16
+        C = embeddings.shape[1] # embedding dim for each level # C - 2 # 2
+        S = np.log2(per_level_scale) # 0.4666666666666666, resolution multiplier at each level, apply log2 for later CUDA exp2f # per_level_scale - 1.381912879967776 # 0.4666666666666666
+        H = base_resolution # base resolution, H - 16 # 16
 
         # manually handle autocast (only use half precision embeddings, inputs must be float for enough precision)
         # if C % 2 != 0, force float, since half for atomicAdd is very slow.
         if torch.is_autocast_enabled() and C % 2 == 0:
-            embeddings = embeddings.to(torch.half) # torch.Size([555520, 2])
+            embeddings = embeddings.to(torch.half) # torch.Size([555520, 2]) # torch.Size([903480, 2])
 
         # L first, optimize cache for cuda kernel, but needs an extra permute later
-        outputs = torch.empty(L, B, C, device=inputs.device, dtype=embeddings.dtype) # torch.Size([16, 202624, 2])
+        outputs = torch.empty(L, B, C, device=inputs.device, dtype=embeddings.dtype) # torch.Size([16, 202624, 2]) # torch.Size([16, 202624, 2])
 
         if calc_grad_inputs:
             dy_dx = torch.empty(B, L * D * C, device=inputs.device, dtype=embeddings.dtype)
@@ -52,7 +52,7 @@ class _grid_encode(Function):
             dy_dx = None
 
         _backend.grid_encode_forward(inputs, embeddings, offsets, outputs, B, D, C, L, S, H, dy_dx, gridtype, align_corners, interpolation)
-
+        # outputs.shape = torch.Size([16, 202624, 2])
         # permute back to [B, L * C]
         outputs = outputs.permute(1, 0, 2).reshape(B, L * C) # torch.Size([202624, 32])
 
