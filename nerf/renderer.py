@@ -185,7 +185,7 @@ class NeRFRenderer(nn.Module):
         fars = fars.detach() # torch.Size([202500])
 
         # encode audio
-        enc_a = self.encode_audio(auds) # [1, 64] # torch.Size([1, 64]) # auds - torch.Size([8, 44, 16])
+        enc_a = self.encode_audio(auds) # [1, 64] # torch.Size([1, 64]) # auds - torch.Size([8, 44, 16]) # Embedding + MLP (Linear at end)
 
         if enc_a is not None and self.smooth_lips: # enc_a.shape = torch.Size([1, 64]) # self.smooth_lips = True
             if self.enc_a is not None:

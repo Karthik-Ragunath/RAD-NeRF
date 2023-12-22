@@ -258,7 +258,7 @@ class NeRFNetwork(NeRFRenderer):
         else:
             h = torch.cat([enc_x, enc_w], dim=-1)
 
-        h = self.sigma_net(h) # torch.Size([202624, 65])
+        h = self.sigma_net(h) # torch.Size([202624, 65]) # Linear + ReLu
 
         # ender.record(); torch.cuda.synchronize(); curr_time = starter.elapsed_time(ender); print(f"sigma_net = {curr_time}"); starter.record()
         sigma = trunc_exp(h[..., 0]) # torch.Size([202624])
