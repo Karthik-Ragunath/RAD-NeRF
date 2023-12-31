@@ -261,3 +261,94 @@ As you can see from the definition of dataloader, size of the dataset is taken a
 Then we iterate through the previously processed audio and corresponding ray information stored under `results` dict as we saw previously to generate photo-realistic renderings.
 
 __2.__ Processings involved in each generation step
+
+__(i)__ Computing nearest and farthest intersection points of each ray in the cube considered
+
+```
+nears, fars = raymarching.near_far_from_aabb(rays_o, rays_d, self.aabb_infer, self.min_near) 
+# rays_o = torch.Size([202500])
+# rays_d = torch.Size([202500]) 
+# self.aabb_infer - tensor([-1.0000, -0.5000, -1.0000,  1.0000,  0.5000,  1.0000], device='cuda:0') : (xmin, ymin, zmin, xmax, ymax, zmax)
+# self.min_near = 0.05
+
+# ...
+
+void near_far_from_aabb(const at::Tensor rays_o, const at::Tensor rays_d, const at::Tensor aabb, const uint32_t N, const float min_near, at::Tensor nears, at::Tensor fars) {
+    static constexpr uint32_t N_THREAD = 128;
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(
+    rays_o.scalar_type(), "near_far_from_aabb", ([&] {
+        kernel_near_far_from_aabb<<<div_round_up(N, N_THREAD), N_THREAD>>>(rays_o.data_ptr<scalar_t>(), rays_d.data_ptr<scalar_t>(), aabb.data_ptr<scalar_t>(), N, min_near, nears.data_ptr<scalar_t>(), fars.data_ptr<scalar_t>());
+    }));
+}
+
+__global__ void kernel_near_far_from_aabb(
+    const scalar_t * __restrict__ rays_o,
+    const scalar_t * __restrict__ rays_d,
+    const scalar_t * __restrict__ aabb,
+    const uint32_t N,
+    const float min_near,
+    scalar_t * nears, scalar_t * fars
+) 
+{
+    // parallel per ray
+    const uint32_t n = threadIdx.x + blockIdx.x * blockDim.x;
+    if (n >= N) return;
+
+    // locate
+    rays_o += n * 3;
+    rays_d += n * 3;
+
+    const float ox = rays_o[0], oy = rays_o[1], oz = rays_o[2];
+    const float dx = rays_d[0], dy = rays_d[1], dz = rays_d[2];
+    const float rdx = 1 / dx, rdy = 1 / dy, rdz = 1 / dz;
+
+    // get near far (assume cube scene)
+    float near = (aabb[0] - ox) * rdx;
+    float far = (aabb[3] - ox) * rdx;
+    if (near > far) swapf(near, far);
+
+    float near_y = (aabb[1] - oy) * rdy;
+    float far_y = (aabb[4] - oy) * rdy;
+    if (near_y > far_y) swapf(near_y, far_y);
+
+    if (near > far_y || near_y > far) {
+        nears[n] = fars[n] = std::numeric_limits<scalar_t>::max();
+        return;
+    }
+
+    if (near_y > near) near = near_y;
+    if (far_y < far) far = far_y;
+
+    float near_z = (aabb[2] - oz) * rdz;
+    float far_z = (aabb[5] - oz) * rdz;
+    if (near_z > far_z) swapf(near_z, far_z);
+
+    if (near > far_z || near_z > far) {
+        nears[n] = fars[n] = std::numeric_limits<scalar_t>::max();
+        return;
+    }
+
+    if (near_z > near) near = near_z;
+    if (far_z < far) far = far_z;
+
+    if (near < min_near) near = min_near;
+
+    nears[n] = near;
+    fars[n] = far;
+}
+```
+
+This section of code computes the nearest and farthest intersection point of the rays
+Assuming the x, y and z are part of a cube, the cube dimensions considered are based on the max and min values of x, y and z coordinates of the data points computed from pose transformation matrix which we saw previously.
+As you can see the kernal computation of this `nears` and `fars` tensors computation is written directly in native cuda to take advantage of the thread parallelism possible with native cuda implementation.
+From the code, we can see that we spawn 128 threads to compute the nears and fars tensor values of 128 rays parallely.
+
+As you can see the logic seems to be really simple:
+
+We know that our shape of interest is a regular cube.
+Hence nearest point of intersection along one dimension cannot be greater than the farthest point of intersection along second or third dimension for the rays to be present in a cube.
+The rays which does satisfy this criteria are considered to outside the cube and hence assigned a default value -> `std::numeric_limits<scalar_t>::max()` as the near and far intersection values for that particular ray with the cube of interest.
+The initial nears and fars tensor values for the rays are computed along x-direction and subsequently rays are filtered out using the comparison with max and min points of intersection along y and z directions.
+
+At the end, the computed `nears` and `fars` interesection values of each rays is returned.
+
