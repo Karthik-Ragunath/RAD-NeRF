@@ -352,3 +352,206 @@ The initial nears and fars tensor values for the rays are computed along x-direc
 
 At the end, the computed `nears` and `fars` interesection values of each rays is returned.
 
+__(ii)__ Encode audio:
+
+```
+# encode audio
+enc_a = self.encode_audio(auds) 
+# enc_a.shape = [1, 64] # torch.Size([1, 64]) 
+# auds - torch.Size([8, 44, 16]) 
+# Embedding + MLP (Linear at end)
+
+self.audio_net = AudioNet(self.audio_in_dim, self.audio_dim) # 44, 64 # CNN -> reduce spatial to 1, followed by FC layer
+
+def encode_audio(self, a):
+    # a: [1, 29, 16] or [8, 29, 16], audio features from deepspeech
+    # if emb, a should be: [1, 16] or [8, 16]
+
+    # fix audio traininig
+    if a is None: 
+        # a.shape = torch.Size([8, 44, 16])
+        return None 
+
+    if self.emb:
+        a = self.embedding(a).transpose(-1, -2).contiguous() # [1/8, 29, 16]
+
+    enc_a = self.audio_net(a) # [1/8, 64] 
+    # enc_a.shape = torch.Size([8, 64])
+
+    if self.att > 0:
+        enc_a = self.audio_att_net(enc_a.unsqueeze(0)) 
+        # enc_a.shape = torch.Size([1, 64]) 
+        # CNN - stride 1, pad 1 -> reduce 8 channels to 1 channel while maintaining spatial dim
+        
+    return enc_a
+
+# Audio feature extractor
+class AudioNet(nn.Module):
+    def __init__(self, dim_in=29, dim_aud=64, win_size=16):
+        super(AudioNet, self).__init__()
+        self.win_size = win_size 
+        # 16
+        
+        self.dim_aud = dim_aud # dim_aud = 64 
+        # dim_in = 44
+        
+        self.encoder_conv = nn.Sequential(  # n x 29 x 16
+            nn.Conv1d(dim_in, 32, kernel_size=3, stride=2, padding=1, bias=True),  # n x 32 x 8
+            nn.LeakyReLU(0.02, True),
+            nn.Conv1d(32, 32, kernel_size=3, stride=2, padding=1, bias=True),  # n x 32 x 4
+            nn.LeakyReLU(0.02, True),
+            nn.Conv1d(32, 64, kernel_size=3, stride=2, padding=1, bias=True),  # n x 64 x 2
+            nn.LeakyReLU(0.02, True),
+            nn.Conv1d(64, 64, kernel_size=3, stride=2, padding=1, bias=True),  # n x 64 x 1
+            nn.LeakyReLU(0.02, True),
+        )
+
+        self.encoder_fc1 = nn.Sequential(
+            nn.Linear(64, 64),
+            nn.LeakyReLU(0.02, True),
+            nn.Linear(64, dim_aud),
+        )
+
+    def forward(self, x):
+        half_w = int(self.win_size/2) 
+        # half_w = 8 
+        # x.shape - torch.Size([8, 44, 16])
+        
+        x = x[:, :, 8-half_w:8+half_w] 
+        # x.shape = torch.Size([8, 44, 16])
+        
+        x = self.encoder_conv(x).squeeze(-1) 
+        # torch.Size([8, 64, 1]).squeeze(-1) = torch.Size([8, 64])
+        
+        x = self.encoder_fc1(x) 
+        # torch.Size([8, 64])
+
+        return x
+
+self.audio_att_net = AudioAttNet(self.audio_dim) 
+# 64
+
+# Audio feature extractor
+class AudioAttNet(nn.Module):
+    def __init__(self, dim_aud=64, seq_len=8):
+        super(AudioAttNet, self).__init__()
+        self.seq_len = seq_len 
+        # 8
+
+        self.dim_aud = dim_aud 
+        # 64
+
+        self.attentionConvNet = nn.Sequential(  # b x subspace_dim x seq_len
+            nn.Conv1d(self.dim_aud, 16, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.LeakyReLU(0.02, True),
+            nn.Conv1d(16, 8, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.LeakyReLU(0.02, True),
+            nn.Conv1d(8, 4, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.LeakyReLU(0.02, True),
+            nn.Conv1d(4, 2, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.LeakyReLU(0.02, True),
+            nn.Conv1d(2, 1, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.LeakyReLU(0.02, True)
+        )
+        self.attentionNet = nn.Sequential(
+            nn.Linear(in_features=self.seq_len, out_features=self.seq_len, bias=True), 
+            # self.seq_len = 8
+            
+            nn.Softmax(dim=1)
+        )
+
+    def forward(self, x):
+        # x: [1, seq_len, dim_aud]
+        x.shape = torch.Size([1, 8, 64])
+        
+        y = x.permute(0, 2, 1)  
+        # y.shape = [1, dim_aud, seq_len] 
+        # y.shape = torch.Size([1, 64, 8])
+
+        y = self.attentionConvNet(y)  
+        # y.shape = torch.Size([1, 1, 8])
+        
+        y = self.attentionNet(y.view(1, self.seq_len)).view(1, self.seq_len, 1) 
+        # y.shape = torch.Size([1, 8, 1])
+        # y.view(1, self.seq_len).shape = torch.Size([1, 8])
+        # self.attentionNet(y.view(1, self.seq_len)).shape = torch.Size([1, 8])
+
+        return torch.sum(y * x, dim=1) # [1, dim_aud] # torch.Size([1, 64])
+```
+
+The input audio feature is encoded via an `AudioNet` to produce an embedding of shape -> `[8, 64]` from input audio features of shape -> `[8, 44, 16]`
+
+This is achieved by a series of 1D-CNN layers with ReLU activations which reduces `[8, 44, 16]` into `[8, 64, 1]` which is then squeezed at last output dimension to generate embedding of shape -> `[8, 64]`. 
+This is then fed to Linear + ReLU + Linear layers to get a `[8, 64]` embedding.
+
+This is then unsqueezed at 0th dimension to get an embedding of shape -> `[1, 8, 64]`. This is fed as input to the `AudioAttNet`
+Here, this embedding is permuted into `[1, 64, 8]` shape.
+This is again passed through a series of 1D-CNN + ReLU activations to get an embedding of shape - `[1, 8, 1]` 
+We could see from the previous two points that by changing the batching dimension by unsqueezing at the 0th dimension we are basically exposing the embedding computed across each audio feature (corresponding to 40ms time) to be subjected to pass through a neural network to generate a embedding which considers the features across all audios samples (8) in the attention window to compute the attention context.
+This context vector of shape -> `[1, 8, 1]` is then multiplied with input embedding of shape `[1, 8, 64]` and summed across `1-st dimension` of the resultant  to get the attention embedding of shape -> `[1, 64]` which is returned.
+
+Thus audio encoding returned from `audio_encode` method is of shape -> `[1, 64]`.
+
+__(iii)__ `Ray-Marching`
+
+```
+max_steps = 16
+```
+Maximum number of steps taken along each ray is set to 16
+
+For each step
+```
+n_alive = rays_alive.shape[0] 
+# 202500, 63206
+                
+# exit loop
+if n_alive <= 0:
+    break
+
+# decide compact_steps
+n_step = max(min(N // n_alive, 8), 1) 
+# 1
+
+xyzs, dirs, deltas = raymarching.march_rays(n_alive, n_step, rays_alive, rays_t, rays_o, rays_d, self.bound, self.density_bitfield, self.cascade, self.grid_size, nears, fars, 128, perturb if step == 0 else False, dt_gamma, max_steps) 
+# xyzs.shape = torch.Size([202624, 3])
+# dirs.shape = torch.Size([202624, 3])
+# deltas.shape = torch.Size([202624, 2])
+# self.bound = 1
+# self.density_bitfield.shape = torch.Size([262144])
+# self.cascade - 1
+# self.grid_size - 128
+# {nears, fars}.shape - torch.Size([202500])
+# perturb = False
+# dt_gamma - 0.00390625
+# max_steps - 16
+
+def march_rays(...):
+    xyzs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 3])
+    dirs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 3])
+    deltas = torch.zeros(M, 2, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 2]) # 2 vals, one for rgb, one for depth # torch.Size([202624, 2])
+
+    if perturb: # False
+        # torch.manual_seed(perturb) # test_gui uses spp index as seed
+        noises = torch.rand(n_alive, dtype=rays_o.dtype, device=rays_o.device)
+    else:
+        noises = torch.zeros(n_alive, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202500]); iter 2: n_alive = 63206, noises.shape = torch.Size([63206])
+
+    _backend.march_rays(n_alive, n_step, rays_alive, rays_t, rays_o, rays_d, bound, dt_gamma, max_steps, C, H, density_bitfield, near, far, xyzs, dirs, deltas, noises)
+
+    # ....
+    
+void march_rays_train(const at::Tensor rays_o, const at::Tensor rays_d, const at::Tensor grid, const float bound, const float dt_gamma, const uint32_t max_steps, const uint32_t N, const uint32_t C, const uint32_t H, const uint32_t M, const at::Tensor nears, const at::Tensor fars, at::Tensor xyzs, at::Tensor dirs, at::Tensor deltas, at::Tensor rays, at::Tensor counter, at::Tensor noises) {
+
+    static constexpr uint32_t N_THREAD = 128;
+    
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(
+    rays_o.scalar_type(), "march_rays_train", ([&] {
+        kernel_march_rays_train<<<div_round_up(N, N_THREAD), N_THREAD>>>(rays_o.data_ptr<scalar_t>(), rays_d.data_ptr<scalar_t>(), grid.data_ptr<uint8_t>(), bound, dt_gamma, max_steps, N, C, H, M, nears.data_ptr<scalar_t>(), fars.data_ptr<scalar_t>(), xyzs.data_ptr<scalar_t>(), dirs.data_ptr<scalar_t>(), deltas.data_ptr<scalar_t>(), rays.data_ptr<int>(), counter.data_ptr<int>(), noises.data_ptr<scalar_t>());
+    }));
+}
+```
+
+
+
+
+
