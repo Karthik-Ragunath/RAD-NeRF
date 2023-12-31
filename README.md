@@ -11,6 +11,8 @@ Note - The repository (unofficial pytorch implementation) uses a mixture of `cud
 ----------------------
 ## LETS LOOK AT IDEAS INVOLVED FROM CODE IMPLEMENTATION POV STEP-BY-STEP
 
+### DATASET PREPARATION
+
 __1.__ `Getting Audio Features`
 
 Pre-trained deepSpeech model from `AD-NeRF` paper is used to get audio features from input `.wav` files.
@@ -231,3 +233,31 @@ results['bg_color'] = bg_img
 
 Background image is simply computed to be `white`
 
+### GENERATING PHOTO-REALISTIC RENDERINGS
+
+__1.__ Iterate through each audio feature which we previously
+
+```
+def dataloader(self):
+    # ...
+    
+    size = self.auds.shape[0]
+    # size = 588
+    # self.auds.shape = torch.Size([588, 44, 16])
+
+    loader = DataLoader(list(range(size)), batch_size=1, collate_fn=self.collate, shuffle=False, num_workers=0) 
+    # len(list(range(size))) = 588
+    
+    # ...
+
+with torch.no_grad():
+    for i, data in enumerate(loader):
+        with torch.cuda.amp.autocast(enabled=self.fp16):
+            preds, preds_depth = self.test_step(data) 
+            # dict_keys(['auds', 'index', 'H', 'W', 'rays_o', 'rays_d', 'eye', 'bg_color', 'bg_coords', 'poses', 'poses_matrix'])
+```
+
+As you can see from the definition of dataloader, size of the dataset is taken as number of audio features (where each feature corresponds to 40ms time)
+Then we iterate through the previously processed audio and corresponding ray information stored under `results` dict as we saw previously to generate photo-realistic renderings.
+
+__2.__ Processings involved in each generation step
