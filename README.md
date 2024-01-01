@@ -763,17 +763,69 @@ This, output is of shape -> `[num_rays_alive * num_steps, 32]`
     # ambient
     ambient = torch.cat([enc_x, enc_a], dim=1) 
     # ambient.shape = torch.Size([202624, 96])
-    
-    ambient = self.ambient_net(ambient).float() 
-    # ambient.shape = torch.Size([202624, 2])
-    
-    ambient = torch.tanh(ambient) 
-    # map to [-1, 1] 
-    # ambient.shape = torch.Size([202624, 2])
-
-    # sigma
-    enc_w = self.encoder_ambient(ambient, bound=1) 
-    # enc_w.shape = torch.Size([202624, 32])
 
     # ...
 ```
+Next, `audio-encoding` and `ray-poisitons grid-encoding` are concatenated to get the concatenated feature of size `[num_rays_alive * num_steps, audio_feature_len + grid_encoding_feature_len]` which is basically `[num_rays_alive * num_steps, 64 + 32]` -> `[num_rays_alive * num_steps, 96]`.
+
+The concatenated encoding is then passed through `self.ambient_net` 
+```
+ambient = self.ambient_net(ambient).float() 
+# ambient.shape = torch.Size([202624, 2])
+
+self.ambient_net = MLP(self.in_dim + self.audio_dim, self.ambient_dim, self.hidden_dim_ambient, self.num_layers_ambient) 
+# self.in_dim = 32
+# self.audio_dim = 64
+# self.ambient_dim = 2
+# self.hidden_dim_ambient = 64
+# self.num_layers_ambient = 3
+
+class MLP(nn.Module):
+    def __init__(self, dim_in, dim_out, dim_hidden, num_layers):
+        super().__init__()
+        self.dim_in = dim_in 
+        # self.dim_in = 96
+        
+        self.dim_out = dim_out 
+        # self.dim_out = 2
+        
+        self.dim_hidden = dim_hidden 
+        # self.dim_hidden = 64
+        
+        self.num_layers = num_layers 
+        # self.num_layers = 3
+
+        net = []
+        for l in range(num_layers):
+            net.append(nn.Linear(self.dim_in if l == 0 else self.dim_hidden, self.dim_out if l == num_layers - 1 else self.dim_hidden, bias=False))
+
+        self.net = nn.ModuleList(net)
+    
+    def forward(self, x):
+        for l in range(self.num_layers):
+            x = self.net[l](x)
+            if l != self.num_layers - 1:
+                x = F.relu(x, inplace=True)
+        return x
+```
+As we can see from the architecture of the `MLP`, it is just a bunch of `nn.Linear` layers. The output feature is of size `self.ambient_dim`
+Thus, `ambient` encoding is of shape -> `[num_rays_alive * num_steps, 2]`
+
+```
+# ...
+
+ambient = torch.tanh(ambient) 
+# map to [-1, 1] 
+# ambient.shape = torch.Size([202624, 2])
+
+# sigma
+enc_w = self.encoder_ambient(ambient, bound=1) 
+# enc_w.shape = torch.Size([202624, 32])
+
+# ...
+```
+The computed `ambient` encoding is then passed through the non-linear `tanh` activation to map the `ambient` encoding in the `[-1, 1]` range.
+
+The `ambient` encoding is then encoded via a `grid_encoder` (inspired from `instant-ngp` paper).
+We already saw the details involved in encoding with `grid-encoder` in detail in the previous paragraph. Same process is followed here.
+Thus the sigma-encoding `enc_w` is of shape -> `[num_rays_alive * num_steps, L * vertex_feature_size]` -> `[num_rays_alive * num_steps, 16 * 2]` (Same as we saw in previous paragraphs).
