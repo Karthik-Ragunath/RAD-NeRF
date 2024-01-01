@@ -529,6 +529,13 @@ xyzs, dirs, deltas = raymarching.march_rays(n_alive, n_step, rays_alive, rays_t,
 # max_steps - 16
 
 def march_rays(...):
+
+    # ...
+    
+    M = n_alive * n_step # 202500, n_step = 1 # 189618, n_step = 2, n_alive = 63206 # iter 5 - M: 201216, n_alive = 40232
+
+    # ...
+
     xyzs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 3])
     dirs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 3])
     deltas = torch.zeros(M, 2, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 2]) # 2 vals, one for rgb, one for depth # torch.Size([202624, 2])
@@ -554,8 +561,65 @@ void march_rays_train(const at::Tensor rays_o, const at::Tensor rays_d, const at
 }
 ```
 Here, we are going to take a deeper look at `ray_marching`.
-We initialize the xyzs
+We initialize the xyzs, dirs and deltas tensors to zeros.
+Lets first see what these xyzs, dirs and deltas indicate
+
+`xyzs` - holds the (x,y,z) coordinates of each sampled point along the rays when we perform `ray_marching`.
+Since there are `n_alive` rays in contention (after performing ray_marching where we took `n-1` steps previously) and since we are going to take `n_steps` in the current iteration of forward ray_marching, we would need:
+`n_alive * n_steps` 3-dim tensors to hold the coordinates of each sampled point along the rays
+
+`dirs` - holds the 3D direction vector of each sampled point along the rays when we do `ray_marching`
+For many ray marching scenarios, especially in simpler models or when dealing with straight rays from the camera, the direction of each ray might not change as it travels through the scene. However, in more complex scenarios involving effects like refraction or in more advanced models, the direction might change at different points along the ray.
+Again, as we say previously with `xyzs`, we would need `n_alive * n_steps` 3-dim tensors to store the `dirs`
+
+`deltas` - holds the step_size taken for the current step and the accumulated distance along the rays when we do `ray_marching`
+Since, we would be storing these two scalar information for each sampled point along the rays, and there are `n_alive * n_steps` total sampled points, we will require `n_alive * n_steps` 2-dim tensors to store the `deltas`
+
+As you can see, the ray-marching core logic is written in native cuda.
+We will be spawning 128 parallel threads to perform ray_marching for 128 rays simulataneously.
+
+Steps involved in ray-marching can be explained diagrammatically as shown below:
+
+![alt text](https://github.com/Karthik-Ragunath/RAD-NeRF/blob/master/assets/ray_marching_screenshot.png?raw=true)
+
+Each circle described in the diagram represents one step taken during ray-marching.
+
+__(iv)__ `Computing RGBs and densities`
+
+```
+sigmas, rgbs, ambient = self(xyzs, dirs, enc_a, ind_code, eye) 
+# xyzs.shape = torch.Size([202624, 3])
+# dirs.shape = torch.Size([202624, 3])
+# enc_a.shape = torch.Size([1, 64])
+# ind_code.shape = torch.Size([4])
+# eye.shape = torch.Size([1, 1])
+# sigmas.shape = torch.Size([202624])
+# rgbs.shape = torch.Size([202624, 3])
+# ambient.shape = torch.Size([202624, 2])
+# ind_code = tensor([-0.0718, -0.1488, -0.0244, -0.0537], device='cuda:0', requires_grad=True)
+# eye = tensor([0.25])
+```
+The `xyzs` and `dirs` computed previously from `ray-marching`; 
+`enc_a` computed from encoding audio features; 
+`ind_code` is identification tensor associated with the particular avatar being trained; 
+`eye` represents the approximate area covered by the eyes in the image.
+
+These are fed as input to the NeRF neural network to compute `color`, `density` and `ambient` values.
+
+```
+def forward(self, x, d, enc_a, c, e=None):
+    # ...
+    enc_a = enc_a.repeat(x.shape[0], 1) # torch.Size([202624, 64]) # audio_encoder # x.shape[0] = 202624, # iter 2 - enc_a.shape = torch.Size([189696, 64])
+    enc_x = self.encoder(x, bound=self.bound) # torch.Size([202624, 32]) # self.bound = 1
 
 
+    # ambient
+    ambient = torch.cat([enc_x, enc_a], dim=1) # torch.Size([202624, 96])
+    ambient = self.ambient_net(ambient).float() # torch.Size([202624, 2])
+    ambient = torch.tanh(ambient) # map to [-1, 1] # torch.Size([202624, 2])
 
+    # sigma
+    enc_w = self.encoder_ambient(ambient, bound=1) # torch.Size([202624, 32])
 
+    # ...
+```
