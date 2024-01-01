@@ -760,11 +760,13 @@ Since, we concatenate the computed feature encoding from grids of all resolution
 This, output is of shape -> `[num_rays_alive * num_steps, 32]`
 
 ```
-    # ambient
-    ambient = torch.cat([enc_x, enc_a], dim=1) 
-    # ambient.shape = torch.Size([202624, 96])
+# ...
 
-    # ...
+# ambient
+ambient = torch.cat([enc_x, enc_a], dim=1) 
+# ambient.shape = torch.Size([202624, 96])
+
+# ...
 ```
 Next, `audio-encoding` and `ray-poisitons grid-encoding` are concatenated to get the concatenated feature of size `[num_rays_alive * num_steps, audio_feature_len + grid_encoding_feature_len]` which is basically `[num_rays_alive * num_steps, 64 + 32]` -> `[num_rays_alive * num_steps, 96]`.
 
@@ -829,3 +831,35 @@ The computed `ambient` encoding is then passed through the non-linear `tanh` act
 The `ambient` encoding is then encoded via a `grid_encoder` (inspired from `instant-ngp` paper).
 We already saw the details involved in encoding with `grid-encoder` in detail in the previous paragraph. Same process is followed here.
 Thus the sigma-encoding `enc_w` is of shape -> `[num_rays_alive * num_steps, L * vertex_feature_size]` -> `[num_rays_alive * num_steps, 16 * 2]` (Same as we saw in previous paragraphs).
+
+```
+h = torch.cat([enc_x, enc_w, e.repeat(x.shape[0], 1)], dim=-1) 
+# h.shape = torch.Size([202624, 65])
+
+h = self.sigma_net(h) 
+# torch.Size([202624, 65]) 
+# Linear + ReLu
+
+sigma = trunc_exp(h[..., 0]) 
+# sigma.shape = torch.Size([202624])
+
+geo_feat = h[..., 1:] 
+# geo_feat.shape = torch.Size([202624, 64])
+
+# color
+enc_d = self.encoder_dir(d) 
+# enc_d.shape = torch.Size([202624, 16])
+
+h = torch.cat([enc_d, geo_feat, c.repeat(x.shape[0], 1)], dim=-1) 
+# h.shape = torch.Size([202624, 84])
+
+h = self.color_net(h) 
+# h.shape = torch.Size([202624, 3])
+
+# sigmoid activation for rgb
+color = torch.sigmoid(h) 
+# color.shape = torch.Size([202624, 3])
+
+return sigma, color, ambient 
+# ambient - torch.Size([202624, 2])
+```
