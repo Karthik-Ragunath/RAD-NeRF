@@ -609,17 +609,151 @@ These are fed as input to the NeRF neural network to compute `color`, `density` 
 ```
 def forward(self, x, d, enc_a, c, e=None):
     # ...
-    enc_a = enc_a.repeat(x.shape[0], 1) # torch.Size([202624, 64]) # audio_encoder # x.shape[0] = 202624, # iter 2 - enc_a.shape = torch.Size([189696, 64])
-    enc_x = self.encoder(x, bound=self.bound) # torch.Size([202624, 32]) # self.bound = 1
 
+    enc_a = enc_a.repeat(x.shape[0], 1) 
+    # enc_a.shape = torch.Size([202624, 64]) 
+    # x.shape[0] = 202624
+```
 
+The audio encoding `enc_a` tensor is repeated along 0th dimension for the count of number of rays.
+
+```
+    enc_x = self.encoder(x, bound=self.bound)
+    # enc_x.shape = torch.Size([202624, 32]) 
+    # self.bound = 1
+```
+The `x` tensor which contains information on the points sampled along the rays is then encoded by a grid encoder.
+
+This is one of the fundamental novelties introduced in the `instant-ngp` which is also used in this paper.
+The native cuda code involved in generating this encoding is also from the `instant-ngp` repository.
+
+Let's look at the implementation of this `grid-encoder` in detail:
+```
+self.encoder, self.in_dim = get_encoder(
+    'tiledgrid', 
+    input_dim=3, 
+    num_levels=16, 
+    level_dim=2, 
+    base_resolution=16, 
+    log2_hashmap_size=16, 
+    desired_resolution=2048 * self.bound, 
+    interpolation='linear',
+    align_corners=False
+) 
+# self.bound = 1 # GridEncoder, 32
+
+def forward(self, inputs, bound=1):
+    # allocate parameters
+    offsets = []
+    offset = 0
+    self.max_params = 2 ** log2_hashmap_size # 2 ** 16 = 65536 (both)
+    for i in range(num_levels): # num_levels = 16 
+        resolution = int(np.ceil(base_resolution * per_level_scale ** i)) # 16, 23, 31, 43, 59, 81, 112, 154, 213, ... # 32 * 32 * 32 = 32768, # 44 * 44 * 44 = 85184
+        params_in_level = min(self.max_params, (resolution if align_corners else resolution + 1) ** input_dim) # limit max number
+        params_in_level = int(np.ceil(params_in_level / 8) * 8) # make divisible
+        offsets.append(offset)
+        offset += params_in_level
+    offsets.append(offset) # [0,4920,18744,51512,117048,182584,248120,313656,379192,444728,510264,575800,641336,706872,772408,837944,903480]
+    offsets = torch.from_numpy(np.array(offsets, dtype=np.int32)) 
+    self.register_buffer('offsets', offsets)
+    
+    self.n_params = offsets[-1] * level_dim # 903480 * 2 = tensor(1806960, dtype=torch.int32)
+
+    # parameters
+    self.embeddings = nn.Parameter(torch.empty(offset, level_dim)) # (903480, 2) - torch.Size([903480, 2]) # Torso = torch.Size([555520, 2])
+
+    inputs = (inputs + bound) / (2 * bound) 
+    # map to [0, 1] 
+    # inputs.shape = torch.Size([202624, 2])
+    # bound = 1
+    
+    prefix_shape = list(inputs.shape[:-1]) 
+    # inputs.shape[:-1] = torch.Size([202624])
+    # len(prefix_shape) = 1
+    
+    inputs = inputs.view(-1, self.input_dim) 
+    # inputs.shape = torch.Size([202624, 2])
+
+    outputs = grid_encode(inputs, self.embeddings, self.offsets, self.per_level_scale, self.base_resolution, inputs.requires_grad, self.gridtype_id, self.align_corners, self.interp_id) 
+    # outputs.shape = torch.Size([202624, 32])
+    
+    outputs = outputs.view(prefix_shape + [self.output_dim]) 
+    # outputs.shape = torch.Size([202624, 32])
+
+    return outputs
+
+def forward(ctx, inputs, embeddings, offsets, per_level_scale, base_resolution, calc_grad_inputs=False, gridtype=0, align_corners=False, interpolation=0):
+        inputs = inputs.contiguous()
+        # torch.Size([202624, 2]) - for audio, 
+        # torch.Size([202624, 3]) - for sampled points in rays
+
+        B, D = inputs.shape # batch size, coord dim 
+        # (B, D) for audio = (202624, 2) 
+        # (B, D) for sampled points on rays = (202624, 3)
+
+        L = offsets.shape[0] - 1 
+        # level # L = 16
+
+        C = embeddings.shape[1] 
+        # embedding dim for each level # C = 2
+
+        S = np.log2(per_level_scale) 
+        # S = 0.4666666666666666, resolution multiplier at each level, apply log2 for later CUDA exp2f 
+        # per_level_scale = 1.381912879967776
+
+        H = base_resolution 
+        # H = 16
+
+        outputs = torch.empty(L, B, C, device=inputs.device, dtype=embeddings.dtype) 
+        # outputs.shape = torch.Size([16, 202624, 2])
+
+        if calc_grad_inputs:
+            dy_dx = torch.empty(B, L * D * C, device=inputs.device, dtype=embeddings.dtype)
+        else:
+            dy_dx = None
+
+        _backend.grid_encode_forward(inputs, embeddings, offsets, outputs, B, D, C, L, S, H, dy_dx, gridtype, align_corners, interpolation)
+        # outputs.shape = torch.Size([16, 202624, 2])
+        # permute back to [B, L * C]
+        
+        outputs = outputs.permute(1, 0, 2).reshape(B, L * C) 
+        # outputs.shape = torch.Size([202624, 32])
+
+        return outputs
+
+```
+Th `get_encoder` function is called which inturn calls `forward` implementation of the `GridEncoder` class.
+Before we explore the `forward` method of the `grid_encoder` its important to get a high level understanding of the concepts involved in designing this encoder.
+The `grid_encoder` is implemented based on the idea of `multi-resolution hash encoding`.
+In terms of implementation, this means, for different resolutution multiple grids are initialized where `features` corresponding to the `vertices` of each grid is stored in a hash table.
+Hence, if we are considering a resolution of `L` levels, there will `L` hash tables holding features associated with each vertex in corresponding grids.
+Here, the hash table size is a `hyper-parameter`
+
+For initial coarser levels, number of vertices present in the grid which encodes that level is less, hence there will be a 1:1 correspondence between vertices and entries in hash table.
+
+At finer resolution levels, there can be hash collisions in case number of vertices is greater than the size of the hash table which represents that level.
+
+According to `instant-ngp` paper, it is not needed to resolve these hash collisions manually with concepts like chaining, etc.
+Instead, the gradient optimization during backpropagation acts something like a `soft-collision resolution algorithm` in the sense that gradient updates will modify the features present in the hash table in such a way that overall loss gets reduced. 
+For example, in case larger error correction needed to be performed on a vertex and a smaller correction is involved with a different vertex and both the vertices points to the same entry in the hash table (hash collision), the overall updates made during the backpropagation for the feature stored in that hash entry with collision is mean of the updates due to the error from these two different vertices. Thus mean value will be dominated by the gradient update due to vertex with larger error when compared to smaller error and hence correction from gradient optimization will also follow the same pattern.
+
+Coming back to the implementation aspect, we could see from the `forward` method that
+
+```
     # ambient
-    ambient = torch.cat([enc_x, enc_a], dim=1) # torch.Size([202624, 96])
-    ambient = self.ambient_net(ambient).float() # torch.Size([202624, 2])
-    ambient = torch.tanh(ambient) # map to [-1, 1] # torch.Size([202624, 2])
+    ambient = torch.cat([enc_x, enc_a], dim=1) 
+    # ambient.shape = torch.Size([202624, 96])
+    
+    ambient = self.ambient_net(ambient).float() 
+    # ambient.shape = torch.Size([202624, 2])
+    
+    ambient = torch.tanh(ambient) 
+    # map to [-1, 1] 
+    # ambient.shape = torch.Size([202624, 2])
 
     # sigma
-    enc_w = self.encoder_ambient(ambient, bound=1) # torch.Size([202624, 32])
+    enc_w = self.encoder_ambient(ambient, bound=1) 
+    # enc_w.shape = torch.Size([202624, 32])
 
     # ...
 ```
