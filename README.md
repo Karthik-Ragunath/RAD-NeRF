@@ -642,6 +642,13 @@ self.encoder, self.in_dim = get_encoder(
 ) 
 # self.bound = 1 # GridEncoder, 32
 
+def get_encoder(...):
+    # ...
+    from gridencoder import GridEncoder
+    encoder = GridEncoder(...)
+    # ...
+    return encoder, encoder.output_dim
+
 def forward(self, inputs, bound=1):
     # allocate parameters
     offsets = []
@@ -674,7 +681,7 @@ def forward(self, inputs, bound=1):
     inputs = inputs.view(-1, self.input_dim) 
     # inputs.shape = torch.Size([202624, 2])
 
-    outputs = grid_encode(inputs, self.embeddings, self.offsets, self.per_level_scale, self.base_resolution, inputs.requires_grad, self.gridtype_id, self.align_corners, self.interp_id) 
+    outputs = grid_encode_wrapper(inputs, self.embeddings, self.offsets, self.per_level_scale, self.base_resolution, inputs.requires_grad, self.gridtype_id, self.align_corners, self.interp_id) 
     # outputs.shape = torch.Size([202624, 32])
     
     outputs = outputs.view(prefix_shape + [self.output_dim]) 
@@ -682,7 +689,7 @@ def forward(self, inputs, bound=1):
 
     return outputs
 
-def forward(ctx, inputs, embeddings, offsets, per_level_scale, base_resolution, calc_grad_inputs=False, gridtype=0, align_corners=False, interpolation=0):
+def grid_encode_wrapper(inputs, embeddings, offsets, per_level_scale, base_resolution, calc_grad_inputs=False, gridtype=0, align_corners=False, interpolation=0):
         inputs = inputs.contiguous()
         # torch.Size([202624, 2]) - for audio, 
         # torch.Size([202624, 3]) - for sampled points in rays
@@ -737,7 +744,20 @@ According to `instant-ngp` paper, it is not needed to resolve these hash collisi
 Instead, the gradient optimization during backpropagation acts something like a `soft-collision resolution algorithm` in the sense that gradient updates will modify the features present in the hash table in such a way that overall loss gets reduced. 
 For example, in case larger error correction needed to be performed on a vertex and a smaller correction is involved with a different vertex and both the vertices points to the same entry in the hash table (hash collision), the overall updates made during the backpropagation for the feature stored in that hash entry with collision is mean of the updates due to the error from these two different vertices. Thus mean value will be dominated by the gradient update due to vertex with larger error when compared to smaller error and hence correction from gradient optimization will also follow the same pattern.
 
-Coming back to the implementation aspect, we could see from the `forward` method that
+To delve a bit more deeper, the `native-cuda` kernal functions which encodes the incoming input into a postion inside the grid.
+Based on the calculated position, feature-encoding associated that particular position is calculated by interpolation (trilinear for positions from rays or bilinear for audio) of features associated with 2^(input_dim) vertices which encloses that particular position in the grid.
+Thus, the features computed from grid of different resolutions for a particular input is concatenated to get the `grid-encoding`
+
+Coming back to the implementation aspect, we could see from the `forward` method that the number of parameters associated with each resolution is computed in `offsets` list.
+Therefore, the scalar `offsets` list denote the size of the hash-table associated with each resolution. (These hash-tables store the features associated with each vertex in the grid). In turn we call the `grid_encode_wrapper` method which acts as a wrapper-interface which links the pytorch code with the native cuda code.
+
+The `grid_encode_wrapper` function calls the `grid_encode_forward` method in the native cuda executable loaded.
+The native cuda code performs the multi-resolution grid encoding exactly as we discussed in the previous paragraphs and returns the grid-encoding of the positions sampled along the rays in the `outputs` tensor.
+
+The `outputs` tensor is of the form `[num_rays_alive * num_steps, grid_encoding_feature_size]`
+In our case, number of levels is 16 and feature size associated with each vertex in grid of all resolution is 2.
+Since, we concatenate the computed feature encoding from grids of all resolution for each sample along the rays, the concatenated `encoding-feature` size associated with each sample is `16 * 2 = 32`
+This, output is of shape -> `[num_rays_alive * num_steps, 32]`
 
 ```
     # ambient
