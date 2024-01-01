@@ -835,27 +835,203 @@ Thus the sigma-encoding `enc_w` is of shape -> `[num_rays_alive * num_steps, L *
 ```
 h = torch.cat([enc_x, enc_w, e.repeat(x.shape[0], 1)], dim=-1) 
 # h.shape = torch.Size([202624, 65])
+```
+sigma encoding feature vectors are computed by concatenating the spatial encoding -> `enc_x` (encoding of points sample along the rays), ambient encoding -> `enc_w` and eye features -> `e` to get concatenated feature size of `[num_rays_alive * num_steps, 65]`
 
+```
 h = self.sigma_net(h) 
 # torch.Size([202624, 65]) 
 # Linear + ReLu
 
+self.sigma_net = MLP(self.in_dim + self.in_dim_ambient + self.eye_dim, 1 + self.geo_feat_dim, self.hidden_dim, self.num_layers) # 65 (32 + 32 + 1), 65, 64, 3
+
+class MLP(nn.Module):
+    def __init__(self, dim_in, dim_out, dim_hidden, num_layers):
+        super().__init__()
+        self.dim_in = dim_in 
+        # 65
+        
+        self.dim_out = dim_out 
+        # 65
+        
+        self.dim_hidden = dim_hidden 
+        # 64
+        
+        self.num_layers = num_layers 
+        # 3
+
+        net = []
+        for l in range(num_layers):
+            net.append(nn.Linear(self.dim_in if l == 0 else self.dim_hidden, self.dim_out if l == num_layers - 1 else self.dim_hidden, bias=False))
+
+        self.net = nn.ModuleList(net)
+    
+    def forward(self, x):
+        for l in range(self.num_layers):
+            x = self.net[l](x)
+            if l != self.num_layers - 1:
+                x = F.relu(x, inplace=True)
+        return x
+```
+The sigma encoding is then fed as input to the `sigma_net`.
+The `sigma_net` uses the same `MLP` architecture as the ambient net which we discussed in the previous paragraphs.
+
+```
 sigma = trunc_exp(h[..., 0]) 
 # sigma.shape = torch.Size([202624])
 
 geo_feat = h[..., 1:] 
 # geo_feat.shape = torch.Size([202624, 64])
+```
+The output from `sigma_net` is split into two parts.
+sigma[:, 0] represents the `sigma` (or) `density` tensor.
+sigma[:, 1:] represents the geometric feature encodings for the give pose+audio data inputs.
 
+```
 # color
 enc_d = self.encoder_dir(d) 
 # enc_d.shape = torch.Size([202624, 16])
 
+self.encoder_dir, self.in_dim_dir = get_encoder('spherical_harmonics') 
+# SHEncoder: input_dim=3 degree=4, 16
+
+from shencoder import SHEncoder
+encoder = SHEncoder(input_dim=input_dim, degree=degree)
+
+def forward(self, inputs, size=1):
+    # inputs: [..., input_dim], normalized real world positions in [-size, size]
+    # return: [..., degree^2]
+
+    inputs = inputs / size # [-1, 1]
+
+    prefix_shape = list(inputs.shape[:-1])
+    inputs = inputs.reshape(-1, self.input_dim)
+
+    outputs = spherical_harmonics_encode_forward(inputs, self.degree, inputs.requires_grad)
+    outputs = outputs.reshape(prefix_shape + [self.output_dim])
+
+    return outputs
+
+def spherical_harmonics_encode_forward(ctx, inputs, degree, calc_grad_inputs=False):
+    # inputs: [B, input_dim], float in [-1, 1]
+    # RETURN: [B, F], float
+
+    inputs = inputs.contiguous()
+    B, input_dim = inputs.shape # batch size, coord dim
+    output_dim = degree ** 2
+    
+    outputs = torch.empty(B, output_dim, dtype=inputs.dtype, device=inputs.device)
+
+    if calc_grad_inputs:
+        dy_dx = torch.empty(B, input_dim * output_dim, dtype=inputs.dtype, device=inputs.device)
+    else:
+        dy_dx = None
+
+    _backend.sh_encode_forward(inputs, outputs, B, input_dim, degree, dy_dx)
+
+    ctx.save_for_backward(inputs, dy_dx)
+    ctx.dims = [B, input_dim, degree]
+
+    return outputs
+
+__global__ void kernel_sh(
+    const scalar_t * __restrict__ inputs, 
+    scalar_t * outputs, 
+    uint32_t B, uint32_t D, uint32_t C,
+    scalar_t * dy_dx
+) {
+    # ...
+	scalar_t x = inputs[0], y = inputs[1], z = inputs[2];
+	scalar_t xy=x*y, xz=x*z, yz=y*z, x2=x*x, y2=y*y, z2=z*z, xyz=xy*z;
+	scalar_t x4=x2*x2, y4=y2*y2, z4=z2*z2;
+	scalar_t x6=x4*x2, y6=y4*y2, z6=z4*z2;
+
+	auto write_sh = [&]() {
+		outputs[0] = 0.28209479177387814f ;                          // 1/(2*sqrt(pi))
+		if (C <= 1) { return; }
+		outputs[1] = -0.48860251190291987f*y ;                               // -sqrt(3)*y/(2*sqrt(pi))
+		outputs[2] = 0.48860251190291987f*z ;                                // sqrt(3)*z/(2*sqrt(pi))
+        ...
+		outputs[15] = 0.59004358992664352f*x*(-x2 + 3.0f*y2) ;                                // sqrt(70)*x*(-x2 + 3*y2)/(8*sqrt(pi))
+
+	};
+
+	write_sh();
+
+	if (dy_dx) {
+		scalar_t *dx = dy_dx + b * D * C2;
+		scalar_t *dy = dx + C2;
+		scalar_t *dz = dy + C2;
+
+		auto write_sh_dx = [&]() {
+			dx[0] = 0.0f ;                             // 0
+			dx[1] = 0.0f ;                             // 0
+			dx[2] = 0.0f ;                             // 0
+            ...
+			dx[15] = -1.7701307697799304f*x2 + 1.7701307697799304f*y2 ;                               // 3*sqrt(70)*(-x2 + y2)/(8*sqrt(pi))
+
+		};
+
+		auto write_sh_dy = [&]() {
+			dy[0] = 0.0f ;                             // 0
+			dy[1] = -0.48860251190291992f ;                          // -sqrt(3)/(2*sqrt(pi))
+			dy[2] = 0.0f ;                             // 0
+            ...
+			dy[15] = 3.5402615395598609f*xy ;                                // 3*sqrt(70)*xy/(4*sqrt(pi))
+
+		};
+
+		auto write_sh_dz = [&]() {
+			dz[0] = 0.0f ;                             // 0
+			dz[1] = 0.0f ;                             // 0
+			dz[2] = 0.48860251190291992f ;                           // sqrt(3)/(2*sqrt(pi))
+            ...
+			dz[15] = 0.0f ;                            // 0
+
+		};
+		write_sh_dx();
+		write_sh_dy();
+		write_sh_dz();
+	}
+}
+```
+The geometric feature encodings are fed as input to the `encoder_dir`.
+`encoder_dir` is a `spherical-harmonics` encoder.
+
+To give an idea on what is `spherical harmonics`:
+In 3D graphics and modeling, particularly in the context of rendering and texture mapping, SH coefficients typically refer to "Spherical Harmonics" coefficients. Spherical Harmonics are a series of orthogonal functions defined on the surface of a sphere and are used in various fields, including physics, mathematics, and computer graphics. They are particularly useful for efficiently representing complex functions or data defined over a sphere, such as lighting environments or the distribution of light and color on a 3D surface.
+
+Now coming back to the code,
+`forward` method of SHEncoder class gets called which inturn calls `spherical_harmonics_encode_forward` method which acts as wrapper-interface between pytorch code and native cuda kernel functions which computes the SH-encodings and its gradients.
+
+The computation involved with calculating SH-encodings is pretty straight-forward.
+The geometric feature encodings (tensor of size `64` for each point sampled along the rays) are subjected to scalar manipulations with pretty-defined `SH-coefficients`.
+Since the SH-coefficients are fixed, gradients can also be computed based on the scalar manipulation formula involving `SH-coefficients`.
+The resultant `enc_d` (sh-encoding) is a tensor of shape -> [num_rays_alive * num_steps, 16].
+
+```
 h = torch.cat([enc_d, geo_feat, c.repeat(x.shape[0], 1)], dim=-1) 
 # h.shape = torch.Size([202624, 84])
+```
+The concatenation of `end_d` SH-encoding, `geo_feature` (geometrical feature encodings), `c` (feature encoding associated with a particular avatar or latent appearence embedding) results in `h` (color-encoding) which is fed as input to compute rgb values associated with each points sampled along the rays.
+`h` (color-encoding) is of shape - `[num_rays_alive * num_steps, 84]`
 
+```
 h = self.color_net(h) 
 # h.shape = torch.Size([202624, 3])
 
+self.color_net = MLP(self.in_dim_dir + self.geo_feat_dim + self.individual_dim, 3, self.hidden_dim_color, self.num_layers_color)
+# self.in_dim_dir = 16
+# self.geo_feat_dim = 64
+# self.individual_dim = 4
+# output_dim = 3
+# self.hidden_dim_color = 64
+# self.num_layers_color = 2
+```
+The color-encoding `h` is fed as input to the `color_net` which is again same as the `MLP` architecture which we discussed previously.
+Thus, we know that output of `color-net` is a tensor of shape -> `[num_rays_alive * num_steps, 3]`
+
+```
 # sigmoid activation for rgb
 color = torch.sigmoid(h) 
 # color.shape = torch.Size([202624, 3])
@@ -863,3 +1039,6 @@ color = torch.sigmoid(h)
 return sigma, color, ambient 
 # ambient - torch.Size([202624, 2])
 ```
+The color-features computed via `color-net` (`MLP`) is then passed through `sigmoid` non-linear activation to get (rgb) color values in `[0, 1]` range.
+The computed `color`, `sigma` (density) and `ambient` tensors for each point sampled along the rays are returned.
+
