@@ -231,8 +231,9 @@ results['bg_color'] = bg_img
 # torch.Size([1, 202500, 3])
 ```
 
-Background image is simply computed to be `white`
+Background image is simply computed to be `white` (tensor of all 1s)
 
+----------------------
 ### GENERATING PHOTO-REALISTIC RENDERINGS
 
 __1.__ Iterate through each audio feature which we previously
@@ -1233,6 +1234,7 @@ As we can see, the 2D-rendering RGB `image` is computed by blending the `transmi
 
 __3.__ The above photo-realistic 2D-render generation step is repeated to get `N` frames which are then binded together to create the talking head avatar video driven by incoming audio features.
 
+----------------------
 ### LOSSES INVOLVED IN TRAINING
 
 There are two losses which are associated with training this model
@@ -1260,3 +1262,5 @@ for l in range(self.L):
 ```
 First is `MSE-Loss`, where we directly do L2 comparison between predicted `rgb` frame and the ground-truth `rgb` frame associated in that particular time step.
 Second is `LPIPS-Loss`, which is we computed by passing the `predicted-rgb` frame and the `ground-truth rgb` frame through the pre-trained `Alex-Net` model and `feature` vector is extracted from the model in both the cases. The mean square difference between feature vectors associated with `predicted-rgb` frame and the `ground-truth rgb` frame is computed as `LPIPS-Loss`.
+
+----------------------
