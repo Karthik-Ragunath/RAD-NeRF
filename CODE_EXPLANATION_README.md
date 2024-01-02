@@ -1,4 +1,4 @@
-# RAD-NERF
+# RAD-NeRF: Real-time Neural Talking Portrait Synthesis (RAD-NeRF)
 
 ----------------------
 ----------------------
@@ -9,6 +9,8 @@ In simple words, RAD-NERF aims to make it possible to generate photo-realistic 3
 ----------------------
 ----------------------
 Note - The repository (unofficial pytorch implementation) uses a mixture of `native cuda` along with `pytorch` to design components related to `ray-marching`, `ray-composition`, and `grid-encoding` to take advantage of higher degree of parallelism and also faster-execution of certain MLP networks made possible through the introduction of fully-fused cuda kernels (which was also introduced in instant ngp). In case, you feel I missed out/ have some mistakes in my understanding of the cuda kernels involved, please feel free to point out which will definitely be useful to make required edits.
+
+Also, since the repository uses many components from `instant-ngp` (Instant Neural Graphics Primitives) NeRF paper, I have also explained the fundamental concepts involved in `instant-ngp` paper from code implementation POV too.
 
 ----------------------
 ----------------------
@@ -1281,6 +1283,20 @@ for l in range(self.L):
 ```
 First is `MSE-Loss`, where we directly do L2 comparison between predicted `rgb` frame and the ground-truth `rgb` frame associated in that particular time step.
 Second is `LPIPS-Loss`, which is we computed by passing the `predicted-rgb` frame and the `ground-truth rgb` frame through the pre-trained `Alex-Net` model and `feature` vector is extracted from the model in both the cases. The mean square difference between feature vectors associated with `predicted-rgb` frame and the `ground-truth rgb` frame is computed as `LPIPS-Loss`.
+
+----------------------
+----------------------
+### FOR FULL CODE, PLEASE REFER
+
+`https://github.com/Karthik-Ragunath/RAD-NeRF`
+
+----------------------
+----------------------
+### REFERENCES
+
+1. https://me.kiui.moe/radnerf/
+
+2. https://nvlabs.github.io/instant-ngp/
 
 ----------------------
 ----------------------
