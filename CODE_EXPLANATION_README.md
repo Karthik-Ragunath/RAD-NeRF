@@ -1,13 +1,16 @@
 # RAD-NERF
 
 ----------------------
-`WHAT DOES INSTRUCT-PIX2PIX STABLE DIFFUSION MODEL AIM TO ACCOMPLISH?`
+----------------------
+`WHAT DOES RAD-NeRF MODEL AIM TO ACCOMPLISH?`
 
 In simple words, RAD-NERF aims to make it possible to generate photo-realistic 3D renderings in real-time by introducing novelties in encoding image and audio separately in a grid based manner (inspired mainly from instant-ngp).
 
 ----------------------
-Note - The repository (unofficial pytorch implementation) uses a mixture of `cuda` along with `pytorch` to design components related to `ray-marching`, `ray-composition`, and `grid-encoding` to take advantage of higher degree of parallelism and also faster-execution of certain MLP networks made possible through the introduction of fully-fused cuda kernels (which was also introduced in instant ngp). Since my exposure to cuda programming is pretty limited, I tried to make sense of whatever I could understand by reading those cuda files. In case, you feel I missed out/ have some mistakes in my understanding of the cuda kernels involved, please feel free to point out in the commets section which will definitely useful to make edits (if required).
+----------------------
+Note - The repository (unofficial pytorch implementation) uses a mixture of `native cuda` along with `pytorch` to design components related to `ray-marching`, `ray-composition`, and `grid-encoding` to take advantage of higher degree of parallelism and also faster-execution of certain MLP networks made possible through the introduction of fully-fused cuda kernels (which was also introduced in instant ngp). In case, you feel I missed out/ have some mistakes in my understanding of the cuda kernels involved, please feel free to point out which will definitely be useful to make required edits.
 
+----------------------
 ----------------------
 ## LETS LOOK AT IDEAS INVOLVED FROM CODE IMPLEMENTATION POV STEP-BY-STEP
 
@@ -24,7 +27,7 @@ if len(aud_features.shape) == 3:
     aud_features = aud_features.float().permute(0, 2, 1) # [N, 16, 29] --> [N, 29, 16] # torch.Size([588, 44, 16])
 ```
 
-The first dimension of `588` indicate the number of audios slices of 40ms (which are trained with sliding window strategy, i.e., when training this ASR model, some subsection of data from previous and next windows are also considered).
+The first dimension of `588` indicate the number of audios slices of 40ms (which are trained with sliding window strategy, i.e., when training this ASR model, some subsection of data from previous and next windows of timeslice are also considered).
 
 ```
 def get_audio_features(features, att_mode, index):
@@ -45,10 +48,10 @@ def get_audio_features(features, att_mode, index):
         auds = torch.cat([auds, torch.zeros_like(auds[:pad_right])], dim=0) # [8, 16]
     return auds
 ```
-
 For each audio feature of 40ms audio-sample, padding is done such that the current audio-feature sample is centered in a window of 8 audio-sample features to create a tensor of shape - torch.Size([8, 44, 16]).
 Thus, 40ms audio corresponds to tensor of shape ([8, 44, 16]).
 
+----------------------
 __2.__ `Pose data`
 
 The pose data (rotation, translation and scaling) for rendering the image is taken in the form of `4*4` transformation matrix.
@@ -106,6 +109,7 @@ def collate():
     # torch.Size([1, 4, 4])
 ```
 
+----------------------
 __3.__ `Initialising rays based on pose data`
 
 Let's have a look at `get_rays` function
@@ -122,7 +126,6 @@ i = i.t().reshape([1, H*W]).expand([B, H*W]) + 0.5
 j = j.t().reshape([1, H*W]).expand([B, H*W]) + 0.5 
 # torch.Size([1, 202500])
 ```
-
 pytorch's `mesh_grid` is used to generate x, y spatial coordinates position.
 Here, we are generating spatial coordinates for H (450), W (450) size of an image
 `0.5` float value is added to add coordinate position.
@@ -144,7 +147,6 @@ results['j'] = j # torch.Size([1, 202500])
 results['inds'] = inds # inds.shape - torch.Size([1, 202500]) 
 # tensor([[     0,      1,      2,  ..., 202497, 202498, 202499]], device='cuda:0')
 ```
-
 `results` dictionary is initialized.
 The coordinate positions in (H, W) 2d space which we generated previously using pytorch's meshgrid position is then reshaped into (H * W) vector and stored into results dictionary.
 Similar we generate unique indices for each element in (H * W) vector, ranging from 0 to ((H * W) - 1) and store in under 'inds' key in results dictionary.
@@ -163,11 +165,10 @@ ys = (j - cy) / fy * zs
 # cy 225.0 
 # fy 1200.0
 ```
-
 The position of z-coordinate plane is fixed as 1.
 Also, the 3d coordinates centered around `0` is computed from the (H * W) spatial coordinate generated previously using the
 __(i)__ focal length and 
-__(ii)__ 2D projection center positions
+__(ii)__ 2D projection center position
 parameters of the camera (intrinsic parameters).
 
 ```
@@ -200,7 +201,6 @@ results['rays_o'] = rays_o
 results['rays_d'] = rays_d 
 # torch.Size([1, 202500, 3])
 ```
-
 The 3d coordinates centered around `0` x,y coordinates is stacked and then processed used to compute direction vector.
 The processing involves dividing the above initialized stacked (3D) position tensor by its L2-norm (computed across x,y,z positions for each point).
 Then, the normalized tensor is converted into rays direction tensor `rays_d` by matrix multiplying it with the pose transformation matrix.
@@ -213,9 +213,9 @@ The computed ray-directions `rays_d` and ray-origins `rays_o` are stored in resu
 ```
 return results
 ```
+Finally the results dictionary which stores all the computed ray data is returned.
 
-Finally the results which stores all the computed ray data is returned.
-
+----------------------
 __4.__ Background image computation.
 
 ```
@@ -230,9 +230,9 @@ bg_img = self.bg_img.view(1, -1, 3).repeat(B, 1, 1).to(self.device)
 results['bg_color'] = bg_img 
 # torch.Size([1, 202500, 3])
 ```
-
 Background image is simply computed to be `white` (tensor of all 1s)
 
+----------------------
 ----------------------
 ### GENERATING PHOTO-REALISTIC RENDERINGS
 
@@ -257,14 +257,13 @@ with torch.no_grad():
             preds, preds_depth = self.test_step(data) 
             # dict_keys(['auds', 'index', 'H', 'W', 'rays_o', 'rays_d', 'eye', 'bg_color', 'bg_coords', 'poses', 'poses_matrix'])
 ```
-
 As you can see from the definition of dataloader, size of the dataset is taken as number of audio features (where each feature corresponds to 40ms time)
 Then we iterate through the previously processed audio and corresponding ray information stored under `results` dict as we saw previously to generate photo-realistic renderings.
 
+----------------------
 __2.__ Processings involved in each generation step
 
 __(I)__ Computing nearest and farthest intersection points of each ray in the cube considered
-
 ```
 nears, fars = raymarching.near_far_from_aabb(rays_o, rays_d, self.aabb_infer, self.min_near) 
 # rays_o = torch.Size([202500])
@@ -338,21 +337,19 @@ __global__ void kernel_near_far_from_aabb(
     fars[n] = far;
 }
 ```
-
 This section of code computes the nearest and farthest intersection point of the rays
 Assuming the x, y and z are part of a cube, the cube dimensions considered are based on the max and min values of x, y and z coordinates of the data points computed from pose transformation matrix which we saw previously.
 As you can see the kernal computation of this `nears` and `fars` tensors computation is written directly in native cuda to take advantage of the thread parallelism possible with native cuda implementation.
 From the code, we can see that we spawn 128 threads to compute the nears and fars tensor values of 128 rays parallely.
 
-As you can see the logic seems to be really simple:
-
-We know that our shape of interest is a regular cube.
-Hence nearest point of intersection along one dimension cannot be greater than the farthest point of intersection along second or third dimension for the rays to be present in a cube.
+As you can see from the code, the logic involved is:
+We know that our shape of interest is a regular cube. Hence nearest point of intersection along one dimension cannot be greater than the farthest point of intersection along second or third dimension for the rays to be present in a cube.
 The rays which does satisfy this criteria are considered to outside the cube and hence assigned a default value -> `std::numeric_limits<scalar_t>::max()` as the near and far intersection values for that particular ray with the cube of interest.
 The initial nears and fars tensor values for the rays are computed along x-direction and subsequently rays are filtered out using the comparison with max and min points of intersection along y and z directions.
 
 At the end, the computed `nears` and `fars` interesection values of each rays is returned.
 
+----------------------
 __(II)__ Encode audio:
 
 ```
@@ -479,7 +476,6 @@ class AudioAttNet(nn.Module):
 
         return torch.sum(y * x, dim=1) # [1, dim_aud] # torch.Size([1, 64])
 ```
-
 The input audio feature is encoded via an `AudioNet` to produce an embedding of shape -> `[8, 64]` from input audio features of shape -> `[8, 44, 16]`
 
 This is achieved by a series of 1D-CNN layers with ReLU activations which reduces `[8, 44, 16]` into `[8, 64, 1]` which is then squeezed at last output dimension to generate embedding of shape -> `[8, 64]`. 
@@ -493,6 +489,7 @@ This context vector of shape -> `[1, 8, 1]` is then multiplied with input embedd
 
 Thus audio encoding returned from `audio_encode` method is of shape -> `[1, 64]`.
 
+----------------------
 __(III)__ `Ray-Marching`
 
 ```
@@ -539,13 +536,17 @@ def march_rays(...):
 
     xyzs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 3])
     dirs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 3])
-    deltas = torch.zeros(M, 2, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 2]) # 2 vals, one for rgb, one for depth # torch.Size([202624, 2])
+    deltas = torch.zeros(M, 2, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 2]) 
+    # 2 vals, one for rgb, one for depth 
+    # deltas.shape = torch.Size([202624, 2])
 
     if perturb: # False
         # torch.manual_seed(perturb) # test_gui uses spp index as seed
         noises = torch.rand(n_alive, dtype=rays_o.dtype, device=rays_o.device)
     else:
-        noises = torch.zeros(n_alive, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202500]); iter 2: n_alive = 63206, noises.shape = torch.Size([63206])
+        noises = torch.zeros(n_alive, dtype=rays_o.dtype, device=rays_o.device) 
+        # noises.shape = torch.Size([202500])
+        # n_alive = 202624
 
     _backend.march_rays(n_alive, n_step, rays_alive, rays_t, rays_o, rays_d, bound, dt_gamma, max_steps, C, H, density_bitfield, near, far, xyzs, dirs, deltas, noises)
 
@@ -581,10 +582,11 @@ We will be spawning 128 parallel threads to perform ray_marching for 128 rays si
 
 Steps involved in ray-marching can be explained diagrammatically as shown below:
 
-![alt text](https://github.com/Karthik-Ragunath/RAD-NeRF/blob/master/assets/ray_marching_screenshot.png?raw=true)
+![raymarching-image](https://github.com/Karthik-Ragunath/RAD-NeRF/blob/master/assets/ray_marching_screenshot.png?raw=true)
 
 Each circle described in the diagram represents one step taken during ray-marching.
 
+----------------------
 __(IV)__ `Computing RGBs and densities`
 
 ```
@@ -654,21 +656,31 @@ def forward(self, inputs, bound=1):
     # allocate parameters
     offsets = []
     offset = 0
-    self.max_params = 2 ** log2_hashmap_size # 2 ** 16 = 65536 (both)
+    
+    self.max_params = 2 ** log2_hashmap_size 
+    # 2 ** 16 = 65536
+
     for i in range(num_levels): # num_levels = 16 
-        resolution = int(np.ceil(base_resolution * per_level_scale ** i)) # 16, 23, 31, 43, 59, 81, 112, 154, 213, ... # 32 * 32 * 32 = 32768, # 44 * 44 * 44 = 85184
+        resolution = int(np.ceil(base_resolution * per_level_scale ** i)) 
+        # 16, 23, 31, 43, 59, 81, 112, 154, 213, ... 
+        
         params_in_level = min(self.max_params, (resolution if align_corners else resolution + 1) ** input_dim) # limit max number
         params_in_level = int(np.ceil(params_in_level / 8) * 8) # make divisible
         offsets.append(offset)
         offset += params_in_level
-    offsets.append(offset) # [0,4920,18744,51512,117048,182584,248120,313656,379192,444728,510264,575800,641336,706872,772408,837944,903480]
+    
+    offsets.append(offset) 
+    # [0,4920,18744,51512,117048,182584,248120,313656,379192,444728,510264,575800,641336,706872,772408,837944,903480]
+    
     offsets = torch.from_numpy(np.array(offsets, dtype=np.int32)) 
     self.register_buffer('offsets', offsets)
     
-    self.n_params = offsets[-1] * level_dim # 903480 * 2 = tensor(1806960, dtype=torch.int32)
+    self.n_params = offsets[-1] * level_dim 
+    # self.n_params = 903480 * 2 = tensor(1806960, dtype=torch.int32)
 
     # parameters
-    self.embeddings = nn.Parameter(torch.empty(offset, level_dim)) # (903480, 2) - torch.Size([903480, 2]) # Torso = torch.Size([555520, 2])
+    self.embeddings = nn.Parameter(torch.empty(offset, level_dim)) 
+    # self.embeddings.shape = torch.Size([903480, 2])
 
     inputs = (inputs + bound) / (2 * bound) 
     # map to [0, 1] 
@@ -844,7 +856,11 @@ h = self.sigma_net(h)
 # torch.Size([202624, 65]) 
 # Linear + ReLu
 
-self.sigma_net = MLP(self.in_dim + self.in_dim_ambient + self.eye_dim, 1 + self.geo_feat_dim, self.hidden_dim, self.num_layers) # 65 (32 + 32 + 1), 65, 64, 3
+self.sigma_net = MLP(self.in_dim + self.in_dim_ambient + self.eye_dim, 1 + self.geo_feat_dim, self.hidden_dim, self.num_layers) 
+# self.in_dim + self.in_dim_ambient + self.eye_dim = 65 (32 + 32 + 1)
+# 1 + self.geo_feat_dim = 1 + 64 = 65
+# self.hidden_dim = 64
+# self.num_layers = 3
 
 class MLP(nn.Module):
     def __init__(self, dim_in, dim_out, dim_hidden, num_layers):
@@ -894,7 +910,8 @@ enc_d = self.encoder_dir(d)
 # enc_d.shape = torch.Size([202624, 16])
 
 self.encoder_dir, self.in_dim_dir = get_encoder('spherical_harmonics') 
-# SHEncoder: input_dim=3 degree=4, 16
+# self.encoder_dir = (SHEncoder: input_dim=3 degree=4)
+# self.in_dim_dir = 16
 
 from shencoder import SHEncoder
 encoder = SHEncoder(input_dim=input_dim, degree=degree)
@@ -903,7 +920,8 @@ def forward(self, inputs, size=1):
     # inputs: [..., input_dim], normalized real world positions in [-size, size]
     # return: [..., degree^2]
 
-    inputs = inputs / size # [-1, 1]
+    inputs = inputs / size 
+    # mapped to range [-1, 1]
 
     prefix_shape = list(inputs.shape[:-1])
     inputs = inputs.reshape(-1, self.input_dim)
@@ -948,12 +966,11 @@ __global__ void kernel_sh(
 	scalar_t x6=x4*x2, y6=y4*y2, z6=z4*z2;
 
 	auto write_sh = [&]() {
-		outputs[0] = 0.28209479177387814f ;                          // 1/(2*sqrt(pi))
-		if (C <= 1) { return; }
-		outputs[1] = -0.48860251190291987f*y ;                               // -sqrt(3)*y/(2*sqrt(pi))
-		outputs[2] = 0.48860251190291987f*z ;                                // sqrt(3)*z/(2*sqrt(pi))
+		outputs[0] = 0.28209479177387814f ; // 1/(2*sqrt(pi))
+		outputs[1] = -0.48860251190291987f*y ; // -sqrt(3)*y/(2*sqrt(pi))
+		outputs[2] = 0.48860251190291987f*z ;  // sqrt(3)*z/(2*sqrt(pi))
         ...
-		outputs[15] = 0.59004358992664352f*x*(-x2 + 3.0f*y2) ;                                // sqrt(70)*x*(-x2 + 3*y2)/(8*sqrt(pi))
+		outputs[15] = 0.59004358992664352f*x*(-x2 + 3.0f*y2) ; // sqrt(70)*x*(-x2 + 3*y2)/(8*sqrt(pi))
 
 	};
 
@@ -965,29 +982,28 @@ __global__ void kernel_sh(
 		scalar_t *dz = dy + C2;
 
 		auto write_sh_dx = [&]() {
-			dx[0] = 0.0f ;                             // 0
-			dx[1] = 0.0f ;                             // 0
-			dx[2] = 0.0f ;                             // 0
+			dx[0] = 0.0f ; // 0
+			dx[1] = 0.0f ; // 0
+			dx[2] = 0.0f ; // 0
             ...
-			dx[15] = -1.7701307697799304f*x2 + 1.7701307697799304f*y2 ;                               // 3*sqrt(70)*(-x2 + y2)/(8*sqrt(pi))
-
+			dx[15] = -1.7701307697799304f*x2 + 1.7701307697799304f*y2 ; // 3*sqrt(70)*(-x2 + y2)/(8*sqrt(pi))
 		};
 
 		auto write_sh_dy = [&]() {
-			dy[0] = 0.0f ;                             // 0
-			dy[1] = -0.48860251190291992f ;                          // -sqrt(3)/(2*sqrt(pi))
-			dy[2] = 0.0f ;                             // 0
+			dy[0] = 0.0f ; // 0
+			dy[1] = -0.48860251190291992f; // -sqrt(3)/(2*sqrt(pi))
+			dy[2] = 0.0f ; // 0
             ...
-			dy[15] = 3.5402615395598609f*xy ;                                // 3*sqrt(70)*xy/(4*sqrt(pi))
+			dy[15] = 3.5402615395598609f*xy ; // 3*sqrt(70)*xy/(4*sqrt(pi))
 
 		};
 
 		auto write_sh_dz = [&]() {
-			dz[0] = 0.0f ;                             // 0
-			dz[1] = 0.0f ;                             // 0
-			dz[2] = 0.48860251190291992f ;                           // sqrt(3)/(2*sqrt(pi))
+			dz[0] = 0.0f ; // 0
+			dz[1] = 0.0f ; // 0
+			dz[2] = 0.48860251190291992f; // sqrt(3)/(2*sqrt(pi))
             ...
-			dz[15] = 0.0f ;                            // 0
+			dz[15] = 0.0f ; // 0
 
 		};
 		write_sh_dx();
@@ -1043,6 +1059,7 @@ return sigma, color, ambient
 The color-features computed via `color-net` (`MLP`) is then passed through `sigmoid` non-linear activation to get (rgb) color values in `[0, 1]` range.
 The computed `color`, `sigma` (density) and `ambient` tensors for each point sampled along the rays are returned.
 
+----------------------
 __(V)__ `Calculating ray-composition`
 
 ```
@@ -1232,8 +1249,10 @@ results['image'] = image
 ```
 As we can see, the 2D-rendering RGB `image` is computed by blending the `transmittance` associated with each ray which is computed in `ray-composition` step and the background-color `bg_color` (tensor of 1s -> `white`).
 
+----------------------
 __3.__ The above photo-realistic 2D-render generation step is repeated to get `N` frames which are then binded together to create the talking head avatar video driven by incoming audio features.
 
+----------------------
 ----------------------
 ### LOSSES INVOLVED IN TRAINING
 
@@ -1263,4 +1282,5 @@ for l in range(self.L):
 First is `MSE-Loss`, where we directly do L2 comparison between predicted `rgb` frame and the ground-truth `rgb` frame associated in that particular time step.
 Second is `LPIPS-Loss`, which is we computed by passing the `predicted-rgb` frame and the `ground-truth rgb` frame through the pre-trained `Alex-Net` model and `feature` vector is extracted from the model in both the cases. The mean square difference between feature vectors associated with `predicted-rgb` frame and the `ground-truth rgb` frame is computed as `LPIPS-Loss`.
 
+----------------------
 ----------------------
