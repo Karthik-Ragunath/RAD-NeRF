@@ -4,7 +4,7 @@
 ----------------------
 `WHAT DOES RAD-NeRF MODEL AIM TO ACCOMPLISH?`
 
-In simple words, RAD-NERF aims to make it possible to generate photo-realistic 3D renderings in real-time by introducing novelties in encoding image and audio separately in a grid based manner (inspired mainly from instant-ngp).
+In simple words, RAD-NeRF aims to make it possible to generate photo-realistic 3D renderings in real-time by introducing novelties in encoding image and audio separately in a grid based manner (inspired mainly from "Instant Neural Graphics Primitives" paper).
 
 ----------------------
 ----------------------
