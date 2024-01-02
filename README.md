@@ -1235,4 +1235,28 @@ __3.__ The above photo-realistic 2D-render generation step is repeated to get `N
 
 ### LOSSES INVOLVED IN TRAINING
 
+There are two losses which are associated with training this model
+```
+# MSE loss
+criterion = torch.nn.MSELoss(reduction='none')
+loss = self.criterion(pred_rgb, rgb).mean(-1) # [B, N, 3] --> [B, N]
 
+# LPIPS loss
+self.criterion_lpips = lpips.LPIPS(net='alex').to(self.device)
+loss = loss + 0.01 * self.criterion_lpips(pred_rgb, rgb)
+
+# ...
+
+for kk in range(self.L):
+    feats0[kk], feats1[kk] = lpips.normalize_tensor(outs0[kk]), lpips.normalize_tensor(outs1[kk])
+    diffs[kk] = (feats0[kk]-feats1[kk])**2
+
+# ...
+
+res = [spatial_average(self.lins[kk](diffs[kk]), keepdim=True) for kk in range(self.L)]
+val = 0
+for l in range(self.L):
+    val += res[l]
+```
+First is `MSE-Loss`, where we directly do L2 comparison between predicted `rgb` frame and the ground-truth `rgb` frame associated in that particular time step.
+Second is `LPIPS-Loss`, which is we computed by passing the `predicted-rgb` frame and the `ground-truth rgb` frame through the pre-trained `Alex-Net` model and `feature` vector is extracted from the model in both the cases. The mean square difference between feature vectors associated with `predicted-rgb` frame and the `ground-truth rgb` frame is computed as `LPIPS-Loss`.
