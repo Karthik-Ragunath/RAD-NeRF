@@ -262,7 +262,7 @@ Then we iterate through the previously processed audio and corresponding ray inf
 
 __2.__ Processings involved in each generation step
 
-__(i)__ Computing nearest and farthest intersection points of each ray in the cube considered
+__(I)__ Computing nearest and farthest intersection points of each ray in the cube considered
 
 ```
 nears, fars = raymarching.near_far_from_aabb(rays_o, rays_d, self.aabb_infer, self.min_near) 
@@ -352,7 +352,7 @@ The initial nears and fars tensor values for the rays are computed along x-direc
 
 At the end, the computed `nears` and `fars` interesection values of each rays is returned.
 
-__(ii)__ Encode audio:
+__(II)__ Encode audio:
 
 ```
 # encode audio
@@ -492,7 +492,7 @@ This context vector of shape -> `[1, 8, 1]` is then multiplied with input embedd
 
 Thus audio encoding returned from `audio_encode` method is of shape -> `[1, 64]`.
 
-__(iii)__ `Ray-Marching`
+__(III)__ `Ray-Marching`
 
 ```
 max_steps = 16
@@ -584,7 +584,7 @@ Steps involved in ray-marching can be explained diagrammatically as shown below:
 
 Each circle described in the diagram represents one step taken during ray-marching.
 
-__(iv)__ `Computing RGBs and densities`
+__(IV)__ `Computing RGBs and densities`
 
 ```
 sigmas, rgbs, ambient = self(xyzs, dirs, enc_a, ind_code, eye) 
@@ -1042,7 +1042,7 @@ return sigma, color, ambient
 The color-features computed via `color-net` (`MLP`) is then passed through `sigmoid` non-linear activation to get (rgb) color values in `[0, 1]` range.
 The computed `color`, `sigma` (density) and `ambient` tensors for each point sampled along the rays are returned.
 
-__(v)__ `Calculating ray-composites`
+__(V)__ `Calculating ray-composition`
 
 ```
 raymarching.composite_rays(n_alive, n_step, rays_alive, rays_t, sigmas, rgbs, deltas, weights_sum, depth, image, T_thresh) 
@@ -1146,10 +1146,93 @@ __global__ void kernel_composite_rays(
 }
 ```
 The computed `rgbs`, `sigmas` values of points sampled along the rays from `NeRF` network are fed as input to the `composite_rays` kernel function implemented in native-cuda.
-To give an idea of what is `ray-composition`, the `ray-composition` is the process of taking `rgbs` (color) and `sigmas` (density) of the points sampled along the rays and compose them by using some algorithm such as `emission-absorption` (used in this case) to assign a single color (rgb) value and and `depth` value (since we are dealing with 3d-space). This color (rgb) value and depth value of the rays are used to render the 2d image based on input camera-pose matrix (and audio too in our case).
+To give an idea of what is `ray-composition`, the `ray-composition` is the process of taking `rgbs` (color) and `sigmas` (density) of the points sampled along the rays and compose them by using some `emission-absorption` based transmittance algorithm such as `Beer-Lambert Law` (used in this case) to assign a single color (rgb) value and and `depth` value (since we are dealing with 3d-space). This color (rgb) value and depth value of the rays are used to render the 2d image based on input camera-pose matrix (and audio too in our case).
+
+Also, to give am idea of what `emission-absorption` based transmittance algorithm mean:
+As the ray marches through the volume (in discrete steps), it encounters points with specific emission, absorption, and scattering properties.
+__(i)__ Emission: At each step, the ray accumulates light based on the emission properties of the material at that point.
+__(ii)__ Absorption: Simultaneously, the ray's current light is attenuated based on the absorption properties of the material. This attenuated light is what will continue to the next point in the volume.
+__(iii)__ Transmittance: The algorithm calculates the transmittance of the ray from its starting point to its current point, which is used to determine how much of the initial light has survived.
+At each step, the color and intensity of the light are updated based on the emission and absorption encountered. The accumulated color and intensity at the end of the ray's path represent the pixel's color and brightness in the final image.
+
+Now coming back to code implementation part of `ray-composition`,
+we can see that `native-cuda` implementation launches 128 parallel threads, where each thread deals with composing the `rgb` (color) and `sigma` (density) value for that ray.
+In our above code, the above mentioned `Beer-Lambert Law` is applied as:
+```
+const scalar_t alpha = 1.0f - __expf(- sigmas[0] * deltas[0]); 
+# computing absorption in the current step
+
+const scalar_t T = 1 - weight_sum;
+# fraction of light available after absorption in previous steps
+
+const scalar_t weight = alpha * T;
+# computing transmittance from this step (by taking into account the fraction of light absorbed in previous steps)
+
+weight_sum += weight;
+# Keeping log of total light absorbed until the current step to compute the transmittance in the next step
+```
+
+Taking a deeper look at the code, we could see that we do not compute all the `n-steps` for every ray. We could see that there are two early stopping criterias:
+
+__(i)__ Transmittance Threshold (T_thresh): If the accumulated transmittance (T) of the ray drops below a certain threshold (T_thresh), it implies that the ray is unlikely to contribute further to the image due to being mostly absorbed or scattered. Continuing to march it would waste computational resources.
+```
+// ray is terminated if delta == 0
+if (deltas[0] == 0) break;
+```
+
+__(ii)__ Zero Delta: If the delta (change in position along the ray) is zero, it might indicate that the ray has hit an opaque surface or otherwise will not contribute further to the image.
+```
+// ray is terminated if T is too small
+// use a larger bound to further accelerate inference
+if (T < T_thresh) break;
+```
+
+In both these above conditions, the early stoppage is performed and next step is not taken.
+
+For the rays which were stopped due to early stoppage condition, we set the flag which indicates whether a particular ray (index) is alive to `False` condition.
+```
+rays_alive[n] = -1
+```
 
 ```
-rays_alive = rays_alive[rays_alive >= 0] 
+rays_alive = rays_alive[rays_alive >= 0]
 # rays_alive.shape = torch.Size([63206])
 ```
+Now, the rays which were `stopped-early` are removed from consideration for future computations since we have already assigned the `rgb` (color) and `sigma` (density) values for those rays
+
+Now with the ray which are still alive, steps (III) `ray-marching`, (IV) `Computing RGBs and densities` and (V) `Calculating ray-composition` are repeated until either are no more rays alive (or) we have reached `max_steps` (max_resolution) which is `16` in our case.
+
+__(VI)__ `Computing 2D-image to be rendered and also depth involved with each pixel`
+
+From all the computations we performed in previous three steps explained above:
+(III) `ray-marching`, (IV) `Computing RGBs and densities` and (V) `Calculating ray-composition`,
+We are going to use the `transmittance` associated with each ray which is computed in `ray-composition` step and also the `nears` (nearest intersection point of rays with the grid) and `fars` (farthest intersection point of rays with the grid) to calculate the rendering 2D-pixel `RGB` value and the `depth` associated with each pixel (in the given 3D scene).
+```
+image = image + (1 - weights_sum).unsqueeze(-1) * bg_color 
+# image.shape = torch.Size([1, 202500, 3]) 
+# weights_sum.shape = torch.Size([202500])
+
+image = image.view(*prefix, 3) 
+# image.shape = torch.Size([1, 202500, 3])
+
+image = image.clamp(0, 1) 
+# image.shape = torch.Size([1, 202500, 3])
+
+depth = torch.clamp(depth - nears, min=0) / (fars - nears) 
+# depth.shape = torch.Size([202500]) 
+# fars, nears, depth - torch.Size([202500])
+
+depth = depth.view(*prefix) 
+# depth.shape = torch.Size([1, 202500])
+# prefix.shape = torch.Size([1, 202500])
+
+results['depth'] = depth
+results['image'] = image 
+```
+As we can see, the 2D-rendering RGB `image` is computed by blending the `transmittance` associated with each ray which is computed in `ray-composition` step and the background-color `bg_color` (tensor of 1s -> `white`).
+
+__3.__ The above photo-realistic 2D-render generation step is repeated to get `N` frames which are then binded together to create the talking head avatar video driven by incoming audio features.
+
+### LOSSES INVOLVED IN TRAINING
+
 
