@@ -1,4 +1,4 @@
-# RAD-NeRF: Real-time Neural Talking Portrait Synthesis (RAD-NeRF)
+# RAD-NeRF: Real-time Neural Talking Portrait Synthesis
 
 ----------------------
 ----------------------
@@ -24,33 +24,48 @@ Pre-trained deepSpeech model from `AD-NeRF` paper is used to get audio features 
 
 ```
 aud_features = np.load(self.opt.aud)
-aud_features = torch.from_numpy(aud_features) # torch.Size([588, 16, 44])
+aud_features = torch.from_numpy(aud_features) 
+# aud_features.shape = torch.Size([588, 16, 44])
+
 if len(aud_features.shape) == 3:
-    aud_features = aud_features.float().permute(0, 2, 1) # [N, 16, 29] --> [N, 29, 16] # torch.Size([588, 44, 16])
+    aud_features = aud_features.float().permute(0, 2, 1)
+    # aud_features.shape = torch.Size([588, 44, 16])
 ```
 
-The first dimension of `588` indicate the number of audios slices of 40ms (which are trained with sliding window strategy, i.e., when training this ASR model, some subsection of data from previous and next windows of timeslice are also considered).
+The first dimension of `588` indicate the number of audios slices of 40ms (which are trained with sliding window strategy, i.e., when training this ASR model, some subsection of data from previous and next windows of time-slice are also considered).
 
 ```
 def get_audio_features(features, att_mode, index):
-    left = index - 4 # -4
-    right = index + 4 # 4
+    left = index - 4 
+    # -4
+    
+    right = index + 4 
+    # 4
+    
     pad_left = 0
     pad_right = 0
     if left < 0:
-        pad_left = -left # 4
-        left = 0 # 0
+        pad_left = -left 
+        # 4
+        
+        left = 0 
+        # 0
+
     if right > features.shape[0]: # 588
         pad_right = right - features.shape[0]
         right = features.shape[0]
-    auds = features[left:right] # torch.Size([4, 44, 16])
+    auds = features[left:right] 
+    # auds.shape = torch.Size([4, 44, 16])
+    
     if pad_left > 0:
-        auds = torch.cat([torch.zeros_like(auds[:pad_left]), auds], dim=0) # torch.Size([8, 44, 16])
+        auds = torch.cat([torch.zeros_like(auds[:pad_left]), auds], dim=0) 
+        # auds.shape = torch.Size([8, 44, 16])
+
     if pad_right > 0:
         auds = torch.cat([auds, torch.zeros_like(auds[:pad_right])], dim=0) # [8, 16]
     return auds
 ```
-For each audio feature of 40ms audio-sample, padding is done such that the current audio-feature sample is centered in a window of 8 audio-sample features to create a tensor of shape - torch.Size([8, 44, 16]).
+For each audio feature of 40ms audio-sample, window is created in such a way that the current audio-feature sample is centered in a window of 8 audio-sample features to create a tensor of shape - torch.Size([8, 44, 16]).
 Thus, 40ms audio corresponds to tensor of shape ([8, 44, 16]).
 
 ----------------------
@@ -218,7 +233,7 @@ return results
 Finally the results dictionary which stores all the computed ray data is returned.
 
 ----------------------
-__4.__ Background image computation.
+__4.__ `Background image computation`
 
 ```
 bg_img = np.ones((self.H, self.W, 3), dtype=np.float32) 
@@ -238,7 +253,7 @@ Background image is simply computed to be `white` (tensor of all 1s)
 ----------------------
 ### GENERATING PHOTO-REALISTIC RENDERINGS
 
-__1.__ Iterate through each audio feature which we previously
+__1.__ `Iterate through each audio feature which we previously sampled`
 
 ```
 def dataloader(self):
@@ -263,9 +278,9 @@ As you can see from the definition of dataloader, size of the dataset is taken a
 Then we iterate through the previously processed audio and corresponding ray information stored under `results` dict as we saw previously to generate photo-realistic renderings.
 
 ----------------------
-__2.__ Processings involved in each generation step
+__2.__ `Processings involved in each generation step`
 
-__(I)__ Computing nearest and farthest intersection points of each ray in the cube considered
+__(I)__ `Computing nearest and farthest intersection points of each ray in the cube considered`
 ```
 nears, fars = raymarching.near_far_from_aabb(rays_o, rays_d, self.aabb_infer, self.min_near) 
 # rays_o = torch.Size([202500])
@@ -352,7 +367,7 @@ The initial nears and fars tensor values for the rays are computed along x-direc
 At the end, the computed `nears` and `fars` interesection values of each rays is returned.
 
 ----------------------
-__(II)__ Encode audio:
+__(II)__ `Encode audio`
 
 ```
 # encode audio
@@ -514,6 +529,9 @@ n_step = max(min(N // n_alive, 8), 1)
 ```
 In case, the numnber of active rays reaches 0 before max steps, the `ray_marching` is terminated.
 
+
+Here, we are going to take a deeper look at `ray_marching`.
+We initialize the xyzs, dirs and deltas tensors to zeros.
 ```
 xyzs, dirs, deltas = raymarching.march_rays(n_alive, n_step, rays_alive, rays_t, rays_o, rays_d, self.bound, self.density_bitfield, self.cascade, self.grid_size, nears, fars, 128, perturb if step == 0 else False, dt_gamma, max_steps) 
 # xyzs.shape = torch.Size([202624, 3])
@@ -527,6 +545,7 @@ xyzs, dirs, deltas = raymarching.march_rays(n_alive, n_step, rays_alive, rays_t,
 # perturb = False
 # dt_gamma - 0.00390625
 # max_steps - 16
+
 
 def march_rays(...):
 
@@ -564,9 +583,7 @@ void march_rays_train(const at::Tensor rays_o, const at::Tensor rays_d, const at
     }));
 }
 ```
-Here, we are going to take a deeper look at `ray_marching`.
-We initialize the xyzs, dirs and deltas tensors to zeros.
-Lets first see what these xyzs, dirs and deltas indicate
+Lets first see what these xyzs, dirs and deltas represent
 
 `xyzs` - holds the (x,y,z) coordinates of each sampled point along the rays when we perform `ray_marching`.
 Since there are `n_alive` rays in contention (after performing ray_marching where we took `n-1` steps previously) and since we are going to take `n_steps` in the current iteration of forward ray_marching, we would need:
@@ -1032,7 +1049,7 @@ The resultant `enc_d` (sh-encoding) is a tensor of shape -> [num_rays_alive * nu
 h = torch.cat([enc_d, geo_feat, c.repeat(x.shape[0], 1)], dim=-1) 
 # h.shape = torch.Size([202624, 84])
 ```
-The concatenation of `end_d` SH-encoding, `geo_feature` (geometrical feature encodings), `c` (feature encoding associated with a particular avatar or latent appearence embedding) results in `h` (color-encoding) which is fed as input to compute rgb values associated with each points sampled along the rays.
+The concatenation of `end_d` SH-encoding, `geo_feature` (geometrical feature encodings), `c` (feature encoding associated with a particular avatar or latent appearance embedding) results in `h` (color-encoding) which is fed as input to compute rgb values associated with each points sampled along the rays.
 `h` (color-encoding) is of shape - `[num_rays_alive * num_steps, 84]`
 
 ```
@@ -1286,7 +1303,7 @@ Second is `LPIPS-Loss`, which is we computed by passing the `predicted-rgb` fram
 
 ----------------------
 ----------------------
-### FOR FULL CODE, PLEASE REFER
+### FOR FULL CODE, PLEASE REFER:
 
 `https://github.com/Karthik-Ragunath/RAD-NeRF`
 
