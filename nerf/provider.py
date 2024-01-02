@@ -86,36 +86,36 @@ class NeRFDataset_Test:
         super().__init__()
         
         self.opt = opt
-        self.device = device
-        self.downscale = downscale
-        self.scale = opt.scale # camera radius scale to make sure camera are inside the bounding box.
-        self.offset = opt.offset # camera offset
-        self.bound = opt.bound # bounding box half length, also used as the radius to random sample poses.
-        self.fp16 = opt.fp16
+        self.device = device # device(type='cuda')
+        self.downscale = downscale # 1
+        self.scale = opt.scale # camera radius scale to make sure camera are inside the bounding box. # 4
+        self.offset = opt.offset # camera offset # [0, 0, 0]
+        self.bound = opt.bound # bounding box half length, also used as the radius to random sample poses. # 1
+        self.fp16 = opt.fp16 # True
 
-        self.start_index = opt.data_range[0]
-        self.end_index = opt.data_range[1]
+        self.start_index = opt.data_range[0] # 0
+        self.end_index = opt.data_range[1] # -1
 
         self.training = False
         self.num_rays = -1
 
         # load nerf-compatible format data.
         
-        with open(opt.pose, 'r') as f:
+        with open(opt.pose, 'r') as f: # 'data/obama.json'
             transform = json.load(f)
 
         # load image size
-        self.H = int(transform['cy']) * 2 // downscale
-        self.W = int(transform['cx']) * 2 // downscale
+        self.H = int(transform['cy']) * 2 // downscale # 450
+        self.W = int(transform['cx']) * 2 // downscale # 450
         
         # read images
         frames = transform["frames"]
 
         # use a slice of the dataset
         if self.end_index == -1: # abuse...
-            self.end_index = len(frames)
+            self.end_index = len(frames) # 7272
 
-        frames = frames[self.start_index:self.end_index]
+        frames = frames[self.start_index:self.end_index] # len(frames) - 7272
 
         print(f'[INFO] load {len(frames)} frames.')
 
@@ -124,13 +124,13 @@ class NeRFDataset_Test:
 
             aud_features = np.load(self.opt.aud)
 
-            aud_features = torch.from_numpy(aud_features)
+            aud_features = torch.from_numpy(aud_features) # torch.Size([588, 16, 44])
 
             # support both [N, 16] labels and [N, 16, K] logits
             if len(aud_features.shape) == 3:
-                aud_features = aud_features.float().permute(0, 2, 1) # [N, 16, 29] --> [N, 29, 16]    
+                aud_features = aud_features.float().permute(0, 2, 1) # [N, 16, 29] --> [N, 29, 16] # torch.Size([588, 44, 16]) 
 
-                if self.opt.emb:
+                if self.opt.emb: # False
                     print(f'[INFO] argmax to aud features {aud_features.shape} for --emb mode')
                     aud_features = aud_features.argmax(1) # [N, 16]
             
@@ -146,28 +146,28 @@ class NeRFDataset_Test:
 
         for f in tqdm.tqdm(frames, desc=f'Loading data'):
             
-            pose = np.array(f['transform_matrix'], dtype=np.float32) # [4, 4]
-            pose = nerf_matrix_to_ngp(pose, scale=self.scale, offset=self.offset)
-            self.poses.append(pose)
+            pose = np.array(f['transform_matrix'], dtype=np.float32) # [4, 4] # (4, 4)
+            pose = nerf_matrix_to_ngp(pose, scale=self.scale, offset=self.offset) # (4, 4), self.scale = 4, self.offset = [0, 0, 0]
+            self.poses.append(pose) # 1
 
             # find the corresponding audio to the image frame
-            if not self.opt.asr and self.opt.aud == '':
-                aud = aud_features[min(f['aud_id'], aud_features.shape[0] - 1)] # careful for the last frame...
+            if not self.opt.asr and self.opt.aud == '': # self.opt.aud = 'data/intro_eo.npy'
+                aud = aud_features[min(f['aud_id'], aud_features.shape[0] - 1)] # careful for the last frame... # aud_features.shape[0] - 1 = 587
                 self.auds.append(aud)
 
             if self.opt.exp_eye:
                 
-                if 'eye_ratio' in f:
+                if 'eye_ratio' in f: # f.keys() = dict_keys(['img_id', 'aud_id', 'transform_matrix'])
                     area = f['eye_ratio']
                 else:
-                    area = 0.25 # default value for opened eye
+                    area = 0.25 # default value for opened eye # 0.25
                 
                 self.eye_area.append(area)
         
         # load pre-extracted background image (should be the same size as training image...)
 
-        if self.opt.bg_img == 'white': # special
-            bg_img = np.ones((self.H, self.W, 3), dtype=np.float32)
+        if self.opt.bg_img == 'white': # special # self.opt.bg_img = 'white'
+            bg_img = np.ones((self.H, self.W, 3), dtype=np.float32) # (450, 450, 3)
         elif self.opt.bg_img == 'black': # special
             bg_img = np.zeros((self.H, self.W, 3), dtype=np.float32)
         else: # load from file
@@ -177,15 +177,15 @@ class NeRFDataset_Test:
             bg_img = cv2.cvtColor(bg_img, cv2.COLOR_BGR2RGB)
             bg_img = bg_img.astype(np.float32) / 255 # [H, W, 3/4]
 
-        self.bg_img = bg_img
+        self.bg_img = bg_img # 1s - (450, 450, 3) - type -> numpy
 
-        self.poses = np.stack(self.poses, axis=0)
+        self.poses = np.stack(self.poses, axis=0) # (7272, 4, 4)
 
         # smooth camera path...
         if self.opt.smooth_path:
-            self.poses = smooth_camera_path(self.poses, self.opt.smooth_path_window)
+            self.poses = smooth_camera_path(self.poses, self.opt.smooth_path_window) # (7272, 4, 4)
             
-        self.poses = torch.from_numpy(self.poses) # [N, 4, 4]
+        self.poses = torch.from_numpy(self.poses) # [N, 4, 4] # torch.Size([7272, 4, 4])
         
         if self.opt.asr:
             # live streaming, no pre-calculated auds
@@ -196,110 +196,110 @@ class NeRFDataset_Test:
                 self.auds = torch.stack(self.auds, dim=0) # [N, 32, 16]
             # auds is novel, may have a different length with images
             else:
-                self.auds = aud_features
+                self.auds = aud_features # torch.Size([588, 44, 16])
         
         self.bg_img = torch.from_numpy(self.bg_img)
 
         if self.opt.exp_eye:
-            self.eye_area = np.array(self.eye_area, dtype=np.float32) # [N]
-            print(f'[INFO] eye_area: {self.eye_area.min()} - {self.eye_area.max()}')
+            self.eye_area = np.array(self.eye_area, dtype=np.float32) # [N] # (7272,)
+            print(f'[INFO] eye_area: {self.eye_area.min()} - {self.eye_area.max()}') # 0.25 - 0.25
 
             if self.opt.smooth_eye:
 
                 # naive 5 window average
-                ori_eye = self.eye_area.copy()
+                ori_eye = self.eye_area.copy() # (7272,)
                 for i in range(ori_eye.shape[0]):
-                    start = max(0, i - 1)
-                    end = min(ori_eye.shape[0], i + 2)
-                    self.eye_area[i] = ori_eye[start:end].mean()
+                    start = max(0, i - 1) # 0
+                    end = min(ori_eye.shape[0], i + 2) # 2
+                    self.eye_area[i] = ori_eye[start:end].mean() # 0.25
 
-            self.eye_area = torch.from_numpy(self.eye_area).view(-1, 1) # [N, 1]
+            self.eye_area = torch.from_numpy(self.eye_area).view(-1, 1) # [N, 1] # torch.Size([7272, 1])
 
         # always preload
-        self.poses = self.poses.to(self.device)
+        self.poses = self.poses.to(self.device) # torch.Size([7272, 4, 4])
 
         if self.auds is not None:
-            self.auds = self.auds.to(self.device)
+            self.auds = self.auds.to(self.device) # torch.Size([588, 44, 16])
 
-        self.bg_img = self.bg_img.to(torch.half).to(self.device)
+        self.bg_img = self.bg_img.to(torch.half).to(self.device) # torch.Size([450, 450, 3])
         
         if self.opt.exp_eye:
-            self.eye_area = self.eye_area.to(self.device)
+            self.eye_area = self.eye_area.to(self.device) # torch.Size([7272, 1])
 
         # load intrinsics
         
-        fl_x = fl_y = transform['focal_len']
+        fl_x = fl_y = transform['focal_len'] # 1200.0
 
-        cx = (transform['cx'] / downscale)
-        cy = (transform['cy'] / downscale)
+        cx = (transform['cx'] / downscale) # 225.0
+        cy = (transform['cy'] / downscale) # 225.0
 
-        self.intrinsics = np.array([fl_x, fl_y, cx, cy])
+        self.intrinsics = np.array([fl_x, fl_y, cx, cy]) # array([1200., 1200.,  225.,  225.])
 
         # directly build the coordinate meshgrid in [-1, 1]^2
-        self.bg_coords = get_bg_coords(self.H, self.W, self.device) # [1, H*W, 2] in [-1, 1]
+        self.bg_coords = get_bg_coords(self.H, self.W, self.device) # [1, H*W, 2] in [-1, 1] # torch.Size([1, 202500, 2]) # H, W = 450, 450
     
     def mirror_index(self, index):
-        size = self.poses.shape[0]
-        turn = index // size
-        res = index % size
+        size = self.poses.shape[0] # 7272
+        turn = index // size # 0; index = 0
+        res = index % size # 0
         if turn % 2 == 0:
-            return res
+            return res # 0
         else:
             return size - res - 1
 
     def collate(self, index):
 
-        B = len(index) # a list of length 1
+        B = len(index) # a list of length 1 # index = [0]
         # assert B == 1
 
         results = {}
 
         # audio use the original index
         if self.auds is not None:
-            auds = get_audio_features(self.auds, self.opt.att, index[0]).to(self.device)
-            results['auds'] = auds
+            auds = get_audio_features(self.auds, self.opt.att, index[0]).to(self.device) # torch.Size([588, 44, 16]), 2, 0 # torch.Size([8, 44, 16])
+            results['auds'] = auds # torch.Size([8, 44, 16])
 
         # head pose and bg image may mirror (replay --> <-- --> <--).
-        index[0] = self.mirror_index(index[0])
+        index[0] = self.mirror_index(index[0]) # 0
 
-        poses = self.poses[index].to(self.device) # [B, 4, 4]
+        poses = self.poses[index].to(self.device) # [B, 4, 4] # torch.Size([1, 4, 4]), index = [0]
         
-        rays = get_rays(poses, self.intrinsics, self.H, self.W, self.num_rays, self.opt.patch_size)
-
-        results['index'] = index # for ind. code
-        results['H'] = self.H
-        results['W'] = self.W
-        results['rays_o'] = rays['rays_o']
-        results['rays_d'] = rays['rays_d']
+        rays = get_rays(poses, self.intrinsics, self.H, self.W, self.num_rays, self.opt.patch_size) # rays.keys() - dict_keys(['i', 'j', 'inds', 'rays_o', 'rays_d']) rays['i'].shape = torch.Size([1, 202500]), rays['j'].shape = torch.Size([1, 202500]), rays['inds'].shape = torch.Size([1, 202500])
+        # torch.Size([1, 4, 4]); self.intrinsics.shape = 4, array([1200., 1200.,  225.,  225.]); 450; 450; -1, 
+        results['index'] = index # for ind. code [0] # [0]
+        results['H'] = self.H # 450
+        results['W'] = self.W # 450
+        results['rays_o'] = rays['rays_o'] # torch.Size([1, 202500, 3])
+        results['rays_d'] = rays['rays_d'] # torch.Size([1, 202500, 3])
 
         if self.opt.exp_eye:
-            results['eye'] = self.eye_area[index].to(self.device) # [1]
+            results['eye'] = self.eye_area[index].to(self.device) # [1] # torch.Size([1, 1]) # self.eye_area[index] = tensor([[0.2500]], device='cuda:0')
         else:
             results['eye'] = None
 
-        bg_img = self.bg_img.view(1, -1, 3).repeat(B, 1, 1).to(self.device)
+        bg_img = self.bg_img.view(1, -1, 3).repeat(B, 1, 1).to(self.device) # torch.Size([1, 202500, 3]) # B = 1 # self.bg_img.view(1, -1, 3).shape = torch.Size([1, 202500, 3])
 
-        results['bg_color'] = bg_img
+        results['bg_color'] = bg_img # torch.Size([1, 202500, 3])
 
-        bg_coords = self.bg_coords # [1, N, 2]
-        results['bg_coords'] = bg_coords
+        bg_coords = self.bg_coords # [1, N, 2] # torch.Size([1, 202500, 2])
+        results['bg_coords'] = bg_coords # torch.Size([1, 202500, 2])
 
-        results['poses'] = convert_poses(poses) # [B, 6]
-        results['poses_matrix'] = poses # [B, 4, 4]
+        results['poses'] = convert_poses(poses) # [B, 6] # torch.Size([1, 6])
+        results['poses_matrix'] = poses # [B, 4, 4] # torch.Size([1, 4, 4])
             
-        return results
+        return results # results.keys() = dict_keys(['auds', 'index', 'H', 'W', 'rays_o', 'rays_d', 'eye', 'bg_color', 'bg_coords', 'poses', 'poses_matrix'])
 
     def dataloader(self):
 
     
         # test with novel auds, then use its length
-        if self.auds is not None:
-            size = self.auds.shape[0]
+        if self.auds is not None: # self.auds.shape = torch.Size([588, 44, 16])
+            size = self.auds.shape[0] # 588
         # live stream test, use 2 * len(poses), so it naturally mirrors.
         else:
             size = 2 * self.poses.shape[0]
 
-        loader = DataLoader(list(range(size)), batch_size=1, collate_fn=self.collate, shuffle=False, num_workers=0)
+        loader = DataLoader(list(range(size)), batch_size=1, collate_fn=self.collate, shuffle=False, num_workers=0) # len(list(range(size))) = 588
         loader._data = self # an ugly fix... we need poses in trainer.
 
         # do evaluate if has gt images and use self-driven setting
@@ -732,4 +732,4 @@ class NeRFDataset:
         # do evaluate if has gt images and use self-driven setting
         loader.has_gt = (self.opt.aud == '')
 
-        return loader        
+        return loader

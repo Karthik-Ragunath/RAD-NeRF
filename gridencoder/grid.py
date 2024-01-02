@@ -30,21 +30,21 @@ class _grid_encode(Function):
         # offsets: [L + 1], int
         # RETURN: [B, F], float
 
-        inputs = inputs.contiguous()
+        inputs = inputs.contiguous() # torch.Size([202624, 2]), torch.Size([202624, 3])
 
-        B, D = inputs.shape # batch size, coord dim
-        L = offsets.shape[0] - 1 # level
-        C = embeddings.shape[1] # embedding dim for each level
-        S = np.log2(per_level_scale) # resolution multiplier at each level, apply log2 for later CUDA exp2f
-        H = base_resolution # base resolution
+        B, D = inputs.shape # batch size, coord dim # (202624, 2) # (202624, 3)
+        L = offsets.shape[0] - 1 # level # L - 16 # 16
+        C = embeddings.shape[1] # embedding dim for each level # C - 2 # 2
+        S = np.log2(per_level_scale) # 0.4666666666666666, resolution multiplier at each level, apply log2 for later CUDA exp2f # per_level_scale - 1.381912879967776 # 0.4666666666666666
+        H = base_resolution # base resolution, H - 16 # 16
 
         # manually handle autocast (only use half precision embeddings, inputs must be float for enough precision)
         # if C % 2 != 0, force float, since half for atomicAdd is very slow.
         if torch.is_autocast_enabled() and C % 2 == 0:
-            embeddings = embeddings.to(torch.half)
+            embeddings = embeddings.to(torch.half) # torch.Size([555520, 2]) # torch.Size([903480, 2])
 
         # L first, optimize cache for cuda kernel, but needs an extra permute later
-        outputs = torch.empty(L, B, C, device=inputs.device, dtype=embeddings.dtype)
+        outputs = torch.empty(L, B, C, device=inputs.device, dtype=embeddings.dtype) # torch.Size([16, 202624, 2]) # torch.Size([16, 202624, 2])
 
         if calc_grad_inputs:
             dy_dx = torch.empty(B, L * D * C, device=inputs.device, dtype=embeddings.dtype)
@@ -52,9 +52,9 @@ class _grid_encode(Function):
             dy_dx = None
 
         _backend.grid_encode_forward(inputs, embeddings, offsets, outputs, B, D, C, L, S, H, dy_dx, gridtype, align_corners, interpolation)
-
+        # outputs.shape = torch.Size([16, 202624, 2])
         # permute back to [B, L * C]
-        outputs = outputs.permute(1, 0, 2).reshape(B, L * C)
+        outputs = outputs.permute(1, 0, 2).reshape(B, L * C) # torch.Size([202624, 32])
 
         ctx.save_for_backward(inputs, embeddings, offsets, dy_dx)
         ctx.dims = [B, D, C, L, S, H, gridtype, interpolation]
@@ -98,43 +98,43 @@ class GridEncoder(nn.Module):
         super().__init__()
 
         # the finest resolution desired at the last level, if provided, overridee per_level_scale
-        if desired_resolution is not None:
-            per_level_scale = np.exp2(np.log2(desired_resolution / base_resolution) / (num_levels - 1))
+        if desired_resolution is not None: # desired_resolution = 2048; base_resolution = 16; num_levels = 16
+            per_level_scale = np.exp2(np.log2(desired_resolution / base_resolution) / (num_levels - 1)) # 1.381912879967776
 
-        self.input_dim = input_dim # coord dims, 2 or 3
-        self.num_levels = num_levels # num levels, each level multiply resolution by 2
-        self.level_dim = level_dim # encode channels per level
-        self.per_level_scale = per_level_scale # multiply resolution by this scale at each level.
-        self.log2_hashmap_size = log2_hashmap_size
-        self.base_resolution = base_resolution
-        self.output_dim = num_levels * level_dim
-        self.gridtype = gridtype
-        self.gridtype_id = _gridtype_to_id[gridtype] # "tiled" or "hash"
-        self.interpolation = interpolation
-        self.interp_id = _interp_to_id[interpolation] # "linear" or "smoothstep"
-        self.align_corners = align_corners
+        self.input_dim = input_dim # coord dims, 2 or 3 # 3 # Torso = 2
+        self.num_levels = num_levels # num levels, each level multiply resolution by 2 # 16 (both)
+        self.level_dim = level_dim # encode channels per level # 2
+        self.per_level_scale = per_level_scale # multiply resolution by this scale at each level. # 1.381912879967776 (both)
+        self.log2_hashmap_size = log2_hashmap_size # 16 (both)
+        self.base_resolution = base_resolution # 16 (both)
+        self.output_dim = num_levels * level_dim # 16 * 2 = 32 (both)
+        self.gridtype = gridtype # 'tiled' (both)
+        self.gridtype_id = _gridtype_to_id[gridtype] # "tiled" or "hash" # {'hash': 0, 'tiled': 1} (both)
+        self.interpolation = interpolation # 'linear' (both)
+        self.interp_id = _interp_to_id[interpolation] # "linear" or "smoothstep" # {'linear': 0, 'smoothstep': 1}
+        self.align_corners = align_corners # False (both)
 
         # allocate parameters
         offsets = []
         offset = 0
-        self.max_params = 2 ** log2_hashmap_size
-        for i in range(num_levels):
-            resolution = int(np.ceil(base_resolution * per_level_scale ** i))
+        self.max_params = 2 ** log2_hashmap_size # 2 ** 16 = 65536 (both)
+        for i in range(num_levels): # num_levels = 16 
+            resolution = int(np.ceil(base_resolution * per_level_scale ** i)) # 16, 23, 31, 43, 59, 81, 112, 154, 213, ... # 32 * 32 * 32 = 32768, # 44 * 44 * 44 = 85184
             params_in_level = min(self.max_params, (resolution if align_corners else resolution + 1) ** input_dim) # limit max number
             params_in_level = int(np.ceil(params_in_level / 8) * 8) # make divisible
             offsets.append(offset)
             offset += params_in_level
-        offsets.append(offset)
-        offsets = torch.from_numpy(np.array(offsets, dtype=np.int32))
+        offsets.append(offset) # [0,4920,18744,51512,117048,182584,248120,313656,379192,444728,510264,575800,641336,706872,772408,837944,903480]
+        offsets = torch.from_numpy(np.array(offsets, dtype=np.int32)) 
         self.register_buffer('offsets', offsets)
         
-        self.n_params = offsets[-1] * level_dim
+        self.n_params = offsets[-1] * level_dim # 903480 * 2 = tensor(1806960, dtype=torch.int32)
 
         # parameters
-        self.embeddings = nn.Parameter(torch.empty(offset, level_dim))
+        self.embeddings = nn.Parameter(torch.empty(offset, level_dim)) # (903480, 2) - torch.Size([903480, 2]) # Torso = torch.Size([555520, 2])
 
         self.reset_parameters()
-    
+
     def reset_parameters(self):
         std = 1e-4
         self.embeddings.data.uniform_(-std, std)
@@ -146,15 +146,15 @@ class GridEncoder(nn.Module):
         # inputs: [..., input_dim], normalized real world positions in [-bound, bound]
         # return: [..., num_levels * level_dim]
 
-        inputs = (inputs + bound) / (2 * bound) # map to [0, 1]
+        inputs = (inputs + bound) / (2 * bound) # map to [0, 1] # inputs.shape - torch.Size([202624, 2]); bound = 1
         
         #print('inputs', inputs.shape, inputs.dtype, inputs.min().item(), inputs.max().item())
 
-        prefix_shape = list(inputs.shape[:-1])
-        inputs = inputs.view(-1, self.input_dim)
+        prefix_shape = list(inputs.shape[:-1]) # inputs.shape[:-1] - torch.Size([202624]); len(prefix_shape) - 1
+        inputs = inputs.view(-1, self.input_dim) # torch.Size([202624, 2])
 
-        outputs = grid_encode(inputs, self.embeddings, self.offsets, self.per_level_scale, self.base_resolution, inputs.requires_grad, self.gridtype_id, self.align_corners, self.interp_id)
-        outputs = outputs.view(prefix_shape + [self.output_dim])
+        outputs = grid_encode(inputs, self.embeddings, self.offsets, self.per_level_scale, self.base_resolution, inputs.requires_grad, self.gridtype_id, self.align_corners, self.interp_id) # torch.Size([202624, 32])
+        outputs = outputs.view(prefix_shape + [self.output_dim]) # torch.Size([202624, 32])
 
         #print('outputs', outputs.shape, outputs.dtype, outputs.min().item(), outputs.max().item())
 

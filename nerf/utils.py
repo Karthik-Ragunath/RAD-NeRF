@@ -40,7 +40,7 @@ def custom_meshgrid(*args):
 
 
 def get_audio_features(features, att_mode, index):
-    if att_mode == 0:
+    if att_mode == 0: # att_mode = 2; index = 0
         return features[[index]]
     elif att_mode == 1:
         left = index - 8
@@ -54,19 +54,19 @@ def get_audio_features(features, att_mode, index):
             auds = torch.cat([torch.zeros(pad_left, *auds.shape[1:], device=auds.device, dtype=auds.dtype), auds], dim=0)
         return auds
     elif att_mode == 2:
-        left = index - 4
-        right = index + 4
+        left = index - 4 # -4
+        right = index + 4 # 4
         pad_left = 0
         pad_right = 0
         if left < 0:
-            pad_left = -left
-            left = 0
-        if right > features.shape[0]:
+            pad_left = -left # 4
+            left = 0 # 0
+        if right > features.shape[0]: # 588
             pad_right = right - features.shape[0]
             right = features.shape[0]
-        auds = features[left:right]
+        auds = features[left:right] # torch.Size([4, 44, 16])
         if pad_left > 0:
-            auds = torch.cat([torch.zeros_like(auds[:pad_left]), auds], dim=0)
+            auds = torch.cat([torch.zeros_like(auds[:pad_left]), auds], dim=0) # torch.Size([8, 44, 16])
         if pad_right > 0:
             auds = torch.cat([auds, torch.zeros_like(auds[:pad_right])], dim=0) # [8, 16]
         return auds
@@ -229,19 +229,19 @@ def euler_angles_to_matrix(euler_angles: torch.Tensor, convention: str='XYZ') ->
 
 @torch.cuda.amp.autocast(enabled=False)
 def convert_poses(poses):
-    # poses: [B, 4, 4]
+    # poses: [B, 4, 4] # torch.Size([1, 4, 4])
     # return [B, 3], 4 rot, 3 trans
-    out = torch.empty(poses.shape[0], 6, dtype=torch.float32, device=poses.device)
-    out[:, :3] = matrix_to_euler_angles(poses[:, :3, :3])
-    out[:, 3:] = poses[:, :3, 3]
-    return out
+    out = torch.empty(poses.shape[0], 6, dtype=torch.float32, device=poses.device) # torch.Size([1, 6])
+    out[:, :3] = matrix_to_euler_angles(poses[:, :3, :3]) # torch.Size([1, 3]) # matrix_to_euler_angles(poses[:, :3, :3]) = tensor([[ 1.5161, -0.0196,  1.5332]], device='cuda:0')
+    out[:, 3:] = poses[:, :3, 3] # torch.Size([1, 3]) # tensor([[ 0.0694,  3.3767, -0.2273]], device='cuda:0')
+    return out # torch.Size([1, 6])
 
 @torch.cuda.amp.autocast(enabled=False)
 def get_bg_coords(H, W, device):
-    X = torch.arange(H, device=device) / (H - 1) * 2 - 1 # in [-1, 1]
-    Y = torch.arange(W, device=device) / (W - 1) * 2 - 1 # in [-1, 1]
+    X = torch.arange(H, device=device) / (H - 1) * 2 - 1 # in [-1, 1] # H = 450, W = 450, # X.shape = torch.Size([450])
+    Y = torch.arange(W, device=device) / (W - 1) * 2 - 1 # in [-1, 1] # Y.shape = torch.Size([450])
     xs, ys = custom_meshgrid(X, Y)
-    bg_coords = torch.cat([xs.reshape(-1, 1), ys.reshape(-1, 1)], dim=-1).unsqueeze(0) # [1, H*W, 2], in [-1, 1]
+    bg_coords = torch.cat([xs.reshape(-1, 1), ys.reshape(-1, 1)], dim=-1).unsqueeze(0) # [1, H*W, 2], in [-1, 1] # torch.Size([1, 202500, 2])
     return bg_coords
 
 
@@ -257,21 +257,21 @@ def get_rays(poses, intrinsics, H, W, N=-1, patch_size=1, rect=None):
         inds: [B, N]
     '''
 
-    device = poses.device
-    B = poses.shape[0]
+    device = poses.device # poses.shape - torch.Size([1, 4, 4])
+    B = poses.shape[0] # 1
     fx, fy, cx, cy = intrinsics
 
-    if rect is not None:
+    if rect is not None: # Normalize
         xmin, xmax, ymin, ymax = rect
         N = (xmax - xmin) * (ymax - ymin)
 
-    i, j = custom_meshgrid(torch.linspace(0, W-1, W, device=device), torch.linspace(0, H-1, H, device=device)) # float
-    i = i.t().reshape([1, H*W]).expand([B, H*W]) + 0.5
-    j = j.t().reshape([1, H*W]).expand([B, H*W]) + 0.5
+    i, j = custom_meshgrid(torch.linspace(0, W-1, W, device=device), torch.linspace(0, H-1, H, device=device)) # float # i = torch.Size([450, 450]); j - torch.Size([450, 450])
+    i = i.t().reshape([1, H*W]).expand([B, H*W]) + 0.5 # torch.Size([1, 202500])
+    j = j.t().reshape([1, H*W]).expand([B, H*W]) + 0.5 # torch.Size([1, 202500])
 
     results = {}
 
-    if N > 0:
+    if N > 0: # -1
         N = min(N, H*W)
 
         if patch_size > 1:
@@ -311,24 +311,24 @@ def get_rays(poses, intrinsics, H, W, N=-1, patch_size=1, rect=None):
 
 
     else:
-        inds = torch.arange(H*W, device=device).expand([B, H*W])
+        inds = torch.arange(H*W, device=device).expand([B, H*W]) # torch.Size([1, 202500]) # B = 1
     
-    results['i'] = i
-    results['j'] = j
-    results['inds'] = inds
+    results['i'] = i # torch.Size([1, 202500]) # tensor([[  0.5000,   1.5000,   2.5000,  ..., 447.5000, 448.5000, 449.5000]], device='cuda:0')
+    results['j'] = j # torch.Size([1, 202500]) # tensor([[  0.5000,   0.5000,   0.5000,  ..., 449.5000, 449.5000, 449.5000]], device='cuda:0')
+    results['inds'] = inds # inds.shape - torch.Size([1, 202500]) # tensor([[     0,      1,      2,  ..., 202497, 202498, 202499]], device='cuda:0')
 
-    zs = torch.ones_like(i)
-    xs = (i - cx) / fx * zs
-    ys = (j - cy) / fy * zs
-    directions = torch.stack((xs, ys, zs), dim=-1)
-    directions = directions / torch.norm(directions, dim=-1, keepdim=True)
-    rays_d = directions @ poses[:, :3, :3].transpose(-1, -2) # (B, N, 3)
+    zs = torch.ones_like(i) # torch.Size([1, 202500])
+    xs = (i - cx) / fx * zs # torch.Size([1, 202500]) # cx 225.0 fx 1200.0
+    ys = (j - cy) / fy * zs # torch.Size([1, 202500]) # cy 225.0 fy 1200.0
+    directions = torch.stack((xs, ys, zs), dim=-1) # directions.shape torch.Size([1, 202500, 3])
+    directions = directions / torch.norm(directions, dim=-1, keepdim=True) # directions.shape torch.Size([1, 202500, 3])
+    rays_d = directions @ poses[:, :3, :3].transpose(-1, -2) # (B, N, 3) # poses[:, :3, :3].shape - torch.Size([1, 3, 3]); torch.Size([1, 202500, 3]); poses[:, :3, :3].transpose(-1, -2).shape - torch.Size([1, 3, 3])
 
-    rays_o = poses[..., :3, 3] # [B, 3]
-    rays_o = rays_o[..., None, :].expand_as(rays_d) # [B, N, 3]
+    rays_o = poses[..., :3, 3] # [B, 3] # poses[..., :3, 3].shape - torch.Size([1, 3]); poses.shape - torch.Size([1, 4, 4])
+    rays_o = rays_o[..., None, :].expand_as(rays_d) # [B, N, 3] # rays_d.shape - torch.Size([1, 202500, 3]); rays_o[..., None, :].expand_as(rays_d).shape - torch.Size([1, 202500, 3]); rays_o[..., None, :].shape - torch.Size([1, 1, 3])
 
-    results['rays_o'] = rays_o
-    results['rays_d'] = rays_d
+    results['rays_o'] = rays_o # torch.Size([1, 202500, 3])
+    results['rays_d'] = rays_d # torch.Size([1, 202500, 3])
 
     return results
 
@@ -594,55 +594,55 @@ class Trainer(object):
                  scheduler_update_every_step=False, # whether to call scheduler.step() after every train step
                  ):
         
-        self.name = name
+        self.name = name # 'ngp'
         self.opt = opt
-        self.mute = mute
-        self.metrics = metrics
-        self.local_rank = local_rank
-        self.world_size = world_size
-        self.workspace = workspace
-        self.ema_decay = ema_decay
-        self.ema_update_interval = ema_update_interval
-        self.fp16 = fp16
-        self.best_mode = best_mode
-        self.use_loss_as_metric = use_loss_as_metric
-        self.report_metric_at_train = report_metric_at_train
-        self.max_keep_ckpt = max_keep_ckpt
-        self.eval_interval = eval_interval
-        self.use_checkpoint = use_checkpoint
-        self.use_tensorboardX = use_tensorboardX
-        self.flip_finetune_lips = self.opt.finetune_lips
-        self.time_stamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-        self.scheduler_update_every_step = scheduler_update_every_step
-        self.device = device if device is not None else torch.device(f'cuda:{local_rank}' if torch.cuda.is_available() else 'cpu')
+        self.mute = mute # False
+        self.metrics = metrics # []
+        self.local_rank = local_rank # 0
+        self.world_size = world_size # 1
+        self.workspace = workspace # 'trial_obama/'
+        self.ema_decay = ema_decay # None
+        self.ema_update_interval = ema_update_interval # 1000
+        self.fp16 = fp16 # True
+        self.best_mode = best_mode # 'min'
+        self.use_loss_as_metric = use_loss_as_metric # True
+        self.report_metric_at_train = report_metric_at_train # False
+        self.max_keep_ckpt = max_keep_ckpt # 2
+        self.eval_interval = eval_interval # 1
+        self.use_checkpoint = use_checkpoint # 'pretrained/obama_eo.pth'
+        self.use_tensorboardX = use_tensorboardX # True
+        self.flip_finetune_lips = self.opt.finetune_lips # False
+        self.time_stamp = time.strftime("%Y-%m-%d_%H-%M-%S") # '2023-12-17_12-27-41'
+        self.scheduler_update_every_step = scheduler_update_every_step # False
+        self.device = device if device is not None else torch.device(f'cuda:{local_rank}' if torch.cuda.is_available() else 'cpu') # device(type='cuda')
         self.console = Console()
 
         model.to(self.device)
-        if self.world_size > 1:
+        if self.world_size > 1: # 1
             model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
         self.model = model
 
-        if isinstance(criterion, nn.Module):
+        if isinstance(criterion, nn.Module): # criterion = None
             criterion.to(self.device)
         self.criterion = criterion
 
-        if optimizer is None:
+        if optimizer is None: # None
             self.optimizer = optim.Adam(self.model.parameters(), lr=0.001, weight_decay=5e-4) # naive adam
         else:
             self.optimizer = optimizer(self.model)
 
-        if lr_scheduler is None:
-            self.lr_scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lambda epoch: 1) # fake scheduler
+        if lr_scheduler is None: # None
+            self.lr_scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lambda epoch: 1) # fake scheduler # <torch.optim.lr_scheduler.LambdaLR object at 0x7efd19bf9360>
         else:
             self.lr_scheduler = lr_scheduler(self.optimizer)
 
-        if ema_decay is not None:
+        if ema_decay is not None: # None
             self.ema = ExponentialMovingAverage(self.model.parameters(), decay=ema_decay)
         else:
-            self.ema = None
+            self.ema = None # None
 
-        self.scaler = torch.cuda.amp.GradScaler(enabled=self.fp16)
+        self.scaler = torch.cuda.amp.GradScaler(enabled=self.fp16) # self.fp16 = True # <torch.cuda.amp.grad_scaler.GradScaler object at 0x7efd19bfb730>
 
         # optionally use LPIPS loss for patch-based training
         if self.opt.patch_size > 1 or self.opt.finetune_lips:
@@ -662,19 +662,19 @@ class Trainer(object):
             }
 
         # auto fix
-        if len(metrics) == 0 or self.use_loss_as_metric:
-            self.best_mode = 'min'
+        if len(metrics) == 0 or self.use_loss_as_metric: # len(metrics) = 0, self.use_loss_as_metric = True
+            self.best_mode = 'min' # 'min'
 
         # workspace prepare
         self.log_ptr = None
-        if self.workspace is not None:
-            os.makedirs(self.workspace, exist_ok=True)        
-            self.log_path = os.path.join(workspace, f"log_{self.name}.txt")
-            self.log_ptr = open(self.log_path, "a+")
+        if self.workspace is not None: # self.workspace = 'trial_obama/'
+            os.makedirs(self.workspace, exist_ok=True) # 'trial_obama/'        
+            self.log_path = os.path.join(workspace, f"log_{self.name}.txt") # 'trial_obama/log_ngp.txt'
+            self.log_ptr = open(self.log_path, "a+") # <_io.TextIOWrapper name='trial_obama/log_ngp.txt' mode='a+' encoding='UTF-8'>
 
-            self.ckpt_path = os.path.join(self.workspace, 'checkpoints')
-            self.best_path = f"{self.ckpt_path}/{self.name}.pth"
-            os.makedirs(self.ckpt_path, exist_ok=True)
+            self.ckpt_path = os.path.join(self.workspace, 'checkpoints') # 'trial_obama/checkpoints'
+            self.best_path = f"{self.ckpt_path}/{self.name}.pth" # 'trial_obama/checkpoints/ngp.pth'
+            os.makedirs(self.ckpt_path, exist_ok=True) # 'trial_obama/checkpoints'
             
         self.log(f'[INFO] Trainer: {self.name} | {self.time_stamp} | {self.device} | {"fp16" if self.fp16 else "fp32"} | {self.workspace}')
         self.log(f'[INFO] #parameters: {sum([p.numel() for p in model.parameters() if p.requires_grad])}')
@@ -695,7 +695,7 @@ class Trainer(object):
                 else:
                     self.log(f"[INFO] {self.best_path} not found, loading latest ...")
                     self.load_checkpoint()
-            else: # path to ckpt
+            else: # path to ckpt # 'pretrained/obama_eo.pth'
                 self.log(f"[INFO] Loading {self.use_checkpoint} ...")
                 self.load_checkpoint(self.use_checkpoint)
 
@@ -840,30 +840,30 @@ class Trainer(object):
     # moved out bg_color and perturb for more flexible control...
     def test_step(self, data, bg_color=None, perturb=False):  
 
-        rays_o = data['rays_o'] # [B, N, 3]
-        rays_d = data['rays_d'] # [B, N, 3]
-        bg_coords = data['bg_coords'] # [1, N, 2]
-        poses = data['poses'] # [B, 7]
+        rays_o = data['rays_o'] # [B, N, 3] # torch.Size([1, 202500, 3])
+        rays_d = data['rays_d'] # [B, N, 3] # torch.Size([1, 202500, 3])
+        bg_coords = data['bg_coords'] # [1, N, 2] # torch.Size([1, 202500, 2])
+        poses = data['poses'] # [B, 7] # torch.Size([1, 6])
 
-        auds = data['auds'] # [B, 29, 16]
-        index = data['index']
-        H, W = data['H'], data['W']
+        auds = data['auds'] # [B, 29, 16] # torch.Size([8, 44, 16])
+        index = data['index'] # 0
+        H, W = data['H'], data['W'] # (450, 450)
 
         # allow using a fixed eye area (avoid eye blink) at test
-        if self.opt.exp_eye and self.opt.fix_eye >= 0:
+        if self.opt.exp_eye and self.opt.fix_eye >= 0: # True and -1
             eye = torch.FloatTensor([self.opt.fix_eye]).view(1, 1).to(self.device)
         else:
-            eye = data['eye'] # [B, 1]
+            eye = data['eye'] # [B, 1] # torch.Size([1, 1])
 
         if bg_color is not None:    
             bg_color = bg_color.to(self.device)
         else:
-            bg_color = data['bg_color']
+            bg_color = data['bg_color'] # torch.Size([1, 202500, 3])
 
-        outputs = self.model.render(rays_o, rays_d, auds, bg_coords, poses, eye=eye, index=index, staged=True, bg_color=bg_color, perturb=perturb, **vars(self.opt))
+        outputs = self.model.render(rays_o, rays_d, auds, bg_coords, poses, eye=eye, index=index, staged=True, bg_color=bg_color, perturb=perturb, **vars(self.opt)) # outputs.keys() = dict_keys(['deform', 'torso_alpha', 'torso_color', 'depth', 'image'])
 
-        pred_rgb = outputs['image'].reshape(-1, H, W, 3)
-        pred_depth = outputs['depth'].reshape(-1, H, W)
+        pred_rgb = outputs['image'].reshape(-1, H, W, 3) # H, W - 450 # torch.Size([1, 450, 450, 3])
+        pred_depth = outputs['depth'].reshape(-1, H, W) # torch.Size([1, 450, 450])
 
         return pred_rgb, pred_depth
 
@@ -923,16 +923,16 @@ class Trainer(object):
     def test(self, loader, save_path=None, name=None, write_image=False):
 
         if save_path is None:
-            save_path = os.path.join(self.workspace, 'results')
+            save_path = os.path.join(self.workspace, 'results') # 'trial_obama/results'
 
         if name is None:
-            name = f'{self.name}_ep{self.epoch:04d}'
+            name = f'{self.name}_ep{self.epoch:04d}' # 'ngp_ep0028'
 
         os.makedirs(save_path, exist_ok=True)
         
         self.log(f"==> Start Test, save results to {save_path}")
 
-        pbar = tqdm.tqdm(total=len(loader) * loader.batch_size, bar_format='{percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
+        pbar = tqdm.tqdm(total=len(loader) * loader.batch_size, bar_format='{percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]') # 588 * 1 = 588 # loader.batch_size = 1, len(loader) = 588
         self.model.eval()
 
         all_preds = []
@@ -942,23 +942,23 @@ class Trainer(object):
             for i, data in enumerate(loader):
                 
                 with torch.cuda.amp.autocast(enabled=self.fp16):
-                    preds, preds_depth = self.test_step(data)                
+                    preds, preds_depth = self.test_step(data) # dict_keys(['auds', 'index', 'H', 'W', 'rays_o', 'rays_d', 'eye', 'bg_color', 'bg_coords', 'poses', 'poses_matrix'])   
                 
-                path = os.path.join(save_path, f'{name}_{i:04d}_rgb.png')
-                path_depth = os.path.join(save_path, f'{name}_{i:04d}_depth.png')
+                path = os.path.join(save_path, f'{name}_{i:04d}_rgb.png') # 'trial_obama/results/ngp_ep0028_0000_rgb.png'
+                path_depth = os.path.join(save_path, f'{name}_{i:04d}_depth.png') # 'trial_obama/results/ngp_ep0028_0000_depth.png'
 
                 #self.log(f"[INFO] saving test image to {path}")
 
-                if self.opt.color_space == 'linear':
+                if self.opt.color_space == 'linear': # 'srgb'
                     preds = linear_to_srgb(preds)
 
-                pred = preds[0].detach().cpu().numpy()
-                pred = (pred * 255).astype(np.uint8)
+                pred = preds[0].detach().cpu().numpy() # (450, 450, 3) # len(preds) = 1
+                pred = (pred * 255).astype(np.uint8) # (450, 450, 3)
 
-                pred_depth = preds_depth[0].detach().cpu().numpy()
-                pred_depth = (pred_depth * 255).astype(np.uint8)
+                pred_depth = preds_depth[0].detach().cpu().numpy() # (450, 450) # len(preds_depth) = 1
+                pred_depth = (pred_depth * 255).astype(np.uint8) # (450, 450)
 
-                if write_image:
+                if write_image: # False
                     imageio.imwrite(path, pred)
                     imageio.imwrite(path_depth, pred_depth)
 
@@ -967,8 +967,8 @@ class Trainer(object):
                 pbar.update(loader.batch_size)
 
         # write video
-        all_preds = np.stack(all_preds, axis=0)
-        imageio.mimwrite(os.path.join(save_path, f'{name}.mp4'), all_preds, fps=25, quality=8, macro_block_size=1)
+        all_preds = np.stack(all_preds, axis=0) # len(all_preds) = 588
+        imageio.mimwrite(os.path.join(save_path, f'{name}.mp4'), all_preds, fps=25, quality=8, macro_block_size=1) # 'trial_obama/results/ngp_ep0028.mp4'
 
         self.log(f"==> Finished Test.")
     
@@ -1424,3 +1424,121 @@ class Trainer(object):
                 self.log("[INFO] loaded scaler.")
             except:
                 self.log("[WARN] Failed to load scaler.")
+
+'''
+i.shape torch.Size([1, 202500])
+W 450
+H 450
+i tensor([[  0.5000,   1.5000,   2.5000,  ..., 447.5000, 448.5000, 449.5000]], device='cuda:0')
+j tensor([[  0.5000,   0.5000,   0.5000,  ..., 449.5000, 449.5000, 449.5000]], device='cuda:0')
+i[0][450] tensor(0.5000, device='cuda:0')
+i[0][900] tensor(0.5000, device='cuda:0')
+i[0][50] tensor(50.5000, device='cuda:0')
+i[0][449] tensor(449.5000, device='cuda:0')
+j[0][450] tensor(1.5000, device='cuda:0')
+j[0][900] tensor(2.5000, device='cuda:0')
+j[0][50] tensor(0.5000, device='cuda:0')
+j[0][449] tensor(0.5000, device='cuda:0')
+
+inds tensor([[     0,      1,      2,  ..., 202497, 202498, 202499]], device='cuda:0')
+
+zs tensor([[1., 1., 1.,  ..., 1., 1., 1.]], device='cuda:0')
+
+xs tensor([[-0.1871, -0.1863, -0.1854,  ...,  0.1854,  0.1863,  0.1871]], device='cuda:0')
+ys tensor([[-0.1871, -0.1871, -0.1871,  ...,  0.1871,  0.1871,  0.1871]], device='cuda:0')
+'''
+
+# self.opt
+# Namespace(pose='data/obama.json', aud='data/intro_eo.npy', bg_img='white', O=True, data_range=[0, -1], workspace='trial_obama/', seed=0, ckpt='pretrained/obama_eo.pth', num_rays=65536, cuda_ray=True, max_steps=16, num_steps=16, upsample_steps=0, update_extra_interval=16, max_ray_batch=4096, fp16=True, lambda_amb=0.1, fbg=False, exp_eye=True, fix_eye=-1, smooth_eye=True, torso_shrink=0.8, color_space='srgb', bound=1, scale=4, offset=[0, 0, 0], dt_gamma=0.00390625, min_near=0.05, density_thresh=10, density_thresh_torso=0.01, patch_size=1, finetune_lips=False, smooth_lips=True, torso=True, head_ckpt='', gui=False, W=450, H=450, radius=3.35, fovy=21.24, max_spp=1, att=2, emb=False, ind_dim=4, ind_num=10000, ind_dim_torso=8, amb_dim=2, part=False, part2=False, train_camera=False, smooth_path=True, smooth_path_window=7, asr=False, asr_wav='', asr_play=False, asr_model='cpierse/wav2vec2-large-xlsr-53-esperanto', asr_save_feats=False, fps=50, l=10, m=50, r=10, test=True, test_train=False)
+
+# NeRFNetwork(
+#   (audio_net): AudioNet(
+#     (encoder_conv): Sequential(
+#       (0): Conv1d(44, 32, kernel_size=(3,), stride=(2,), padding=(1,))
+#       (1): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (2): Conv1d(32, 32, kernel_size=(3,), stride=(2,), padding=(1,))
+#       (3): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (4): Conv1d(32, 64, kernel_size=(3,), stride=(2,), padding=(1,))
+#       (5): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (6): Conv1d(64, 64, kernel_size=(3,), stride=(2,), padding=(1,))
+#       (7): LeakyReLU(negative_slope=0.02, inplace=True)
+#     )
+#     (encoder_fc1): Sequential(
+#       (0): Linear(in_features=64, out_features=64, bias=True)
+#       (1): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (2): Linear(in_features=64, out_features=64, bias=True)
+#     )
+#   )
+#   (audio_att_net): AudioAttNet(
+#     (attentionConvNet): Sequential(
+#       (0): Conv1d(64, 16, kernel_size=(3,), stride=(1,), padding=(1,))
+#       (1): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (2): Conv1d(16, 8, kernel_size=(3,), stride=(1,), padding=(1,))
+#       (3): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (4): Conv1d(8, 4, kernel_size=(3,), stride=(1,), padding=(1,))
+#       (5): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (6): Conv1d(4, 2, kernel_size=(3,), stride=(1,), padding=(1,))
+#       (7): LeakyReLU(negative_slope=0.02, inplace=True)
+#       (8): Conv1d(2, 1, kernel_size=(3,), stride=(1,), padding=(1,))
+#       (9): LeakyReLU(negative_slope=0.02, inplace=True)
+#     )
+#     (attentionNet): Sequential(
+#       (0): Linear(in_features=8, out_features=8, bias=True)
+#       (1): Softmax(dim=1)
+#     )
+#   )
+#   (encoder): GridEncoder: input_dim=3 num_levels=16 level_dim=2 resolution=16 -> 2048 per_level_scale=1.3819 params=(903480, 2) gridtype=tiled align_corners=False interpolation=linear
+#   (encoder_ambient): GridEncoder: input_dim=2 num_levels=16 level_dim=2 resolution=16 -> 2048 per_level_scale=1.3819 params=(555520, 2) gridtype=tiled align_corners=False interpolation=linear
+#   (ambient_net): MLP(
+#     (net): ModuleList(
+#       (0): Linear(in_features=96, out_features=64, bias=False)
+#       (1): Linear(in_features=64, out_features=64, bias=False)
+#       (2): Linear(in_features=64, out_features=2, bias=False)
+#     )
+#   )
+#   (sigma_net): MLP(
+#     (net): ModuleList(
+#       (0): Linear(in_features=65, out_features=64, bias=False)
+#       (1): Linear(in_features=64, out_features=64, bias=False)
+#       (2): Linear(in_features=64, out_features=65, bias=False)
+#     )
+#   )
+#   (encoder_dir): SHEncoder: input_dim=3 degree=4
+#   (color_net): MLP(
+#     (net): ModuleList(
+#       (0): Linear(in_features=84, out_features=64, bias=False)
+#       (1): Linear(in_features=64, out_features=3, bias=False)
+#     )
+#   )
+#   (torso_deform_encoder): FreqEncoder: input_dim=2 degree=10 output_dim=42
+#   (pose_encoder): FreqEncoder: input_dim=6 degree=4 output_dim=54
+#   (torso_deform_net): MLP(
+#     (net): ModuleList(
+#       (0): Linear(in_features=104, out_features=64, bias=False)
+#       (1): Linear(in_features=64, out_features=64, bias=False)
+#       (2): Linear(in_features=64, out_features=2, bias=False)
+#     )
+#   )
+#   (torso_encoder): GridEncoder: input_dim=2 num_levels=16 level_dim=2 resolution=16 -> 2048 per_level_scale=1.3819 params=(555520, 2) gridtype=tiled align_corners=False interpolation=linear
+#   (torso_net): MLP(
+#     (net): ModuleList(
+#       (0): Linear(in_features=136, out_features=32, bias=False)
+#       (1): Linear(in_features=32, out_features=32, bias=False)
+#       (2): Linear(in_features=32, out_features=4, bias=False)
+#     )
+#   )
+# )
+
+# Adam (
+# Parameter Group 0
+#     amsgrad: False
+#     betas: (0.9, 0.999)
+#     capturable: False
+#     differentiable: False
+#     eps: 1e-08
+#     foreach: None
+#     fused: None
+#     lr: 0.001
+#     maximize: False
+#     weight_decay: 0.0005
+# )

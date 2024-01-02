@@ -1,9 +1,9 @@
 torch-ema
 ninja
 trimesh
-opencv-python
+# opencv-python
 tensorboardX
-torch
+# torch
 numpy 
 pandas
 tqdm
@@ -19,7 +19,7 @@ python_speech_features
 numba
 resampy
 transformers
-pyaudio
+# pyaudio
 soundfile
 einops
 configargparse

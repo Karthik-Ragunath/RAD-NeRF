@@ -8,6 +8,7 @@ from torch.cuda.amp import custom_bwd, custom_fwd
 
 try:
     import _raymarching_face as _backend
+    print("Raymarching import happened")
 except ImportError:
     from .backend import _backend
 
@@ -22,28 +23,28 @@ class _near_far_from_aabb(Function):
         ''' near_far_from_aabb, CUDA implementation
         Calculate rays' intersection time (near and far) with aabb
         Args:
-            rays_o: float, [N, 3]
-            rays_d: float, [N, 3]
-            aabb: float, [6], (xmin, ymin, zmin, xmax, ymax, zmax)
-            min_near: float, scalar
+            rays_o: float, [N, 3] # torch.Size([202500, 3])
+            rays_d: float, [N, 3] # torch.Size([202500, 3])
+            aabb: float, [6], (xmin, ymin, zmin, xmax, ymax, zmax) # tensor([-1.0000, -0.5000, -1.0000,  1.0000,  0.5000,  1.0000], device='cuda:0')
+            min_near: float, scalar 0.05
         Returns:
             nears: float, [N]
             fars: float, [N]
         '''
-        if not rays_o.is_cuda: rays_o = rays_o.cuda()
-        if not rays_d.is_cuda: rays_d = rays_d.cuda()
+        if not rays_o.is_cuda: rays_o = rays_o.cuda() # torch.Size([202500, 3])
+        if not rays_d.is_cuda: rays_d = rays_d.cuda() # torch.Size([202500, 3])
 
         rays_o = rays_o.contiguous().view(-1, 3)
         rays_d = rays_d.contiguous().view(-1, 3)
 
-        N = rays_o.shape[0] # num rays
+        N = rays_o.shape[0] # num rays # 202500
 
-        nears = torch.empty(N, dtype=rays_o.dtype, device=rays_o.device)
-        fars = torch.empty(N, dtype=rays_o.dtype, device=rays_o.device)
+        nears = torch.empty(N, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202500])
+        fars = torch.empty(N, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202500])
 
         _backend.near_far_from_aabb(rays_o, rays_d, aabb, N, min_near, nears, fars)
 
-        return nears, fars
+        return nears, fars # torch.Size([202500]), torch.Size([202500])
 
 near_far_from_aabb = _near_far_from_aabb.apply
 
@@ -370,30 +371,43 @@ class _march_rays(Function):
             deltas: float, [n_alive * n_step, 2], all generated points' deltas (here we record two deltas, the first is for RGB, the second for depth).
         '''
         
-        if not rays_o.is_cuda: rays_o = rays_o.cuda()
-        if not rays_d.is_cuda: rays_d = rays_d.cuda()
+        if not rays_o.is_cuda: rays_o = rays_o.cuda() # torch.Size([202500, 3]), torch.Size([202500, 3])
+        if not rays_d.is_cuda: rays_d = rays_d.cuda() # torch.Size([202500, 3]), torch.Size([202500, 3])
         
-        rays_o = rays_o.contiguous().view(-1, 3)
-        rays_d = rays_d.contiguous().view(-1, 3)
+        rays_o = rays_o.contiguous().view(-1, 3) # torch.Size([202500, 3])
+        rays_d = rays_d.contiguous().view(-1, 3) # torch.Size([202500, 3])
 
-        M = n_alive * n_step
+        M = n_alive * n_step # 202500, n_step = 1 # 189618, n_step = 2, n_alive = 63206 # iter 5 - M: 201216, n_alive = 40232
 
-        if align > 0:
-            M += align - (M % align)
+        if align > 0: # 128
+            M += align - (M % align) # 202624 # make num_rays divisble by align - 128 # iter - 2: M = 189696
         
-        xyzs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device)
-        dirs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device)
-        deltas = torch.zeros(M, 2, dtype=rays_o.dtype, device=rays_o.device) # 2 vals, one for rgb, one for depth
+        xyzs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 3])
+        dirs = torch.zeros(M, 3, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 3])
+        deltas = torch.zeros(M, 2, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202624, 2]) # 2 vals, one for rgb, one for depth # torch.Size([202624, 2])
 
-        if perturb:
+        if perturb: # False
             # torch.manual_seed(perturb) # test_gui uses spp index as seed
             noises = torch.rand(n_alive, dtype=rays_o.dtype, device=rays_o.device)
         else:
-            noises = torch.zeros(n_alive, dtype=rays_o.dtype, device=rays_o.device)
+            noises = torch.zeros(n_alive, dtype=rays_o.dtype, device=rays_o.device) # torch.Size([202500]); iter 2: n_alive = 63206, noises.shape = torch.Size([63206])
 
         _backend.march_rays(n_alive, n_step, rays_alive, rays_t, rays_o, rays_d, bound, dt_gamma, max_steps, C, H, density_bitfield, near, far, xyzs, dirs, deltas, noises)
 
         return xyzs, dirs, deltas
+    
+        # torch.count_nonzero(xyzs)
+        # tensor(189618, device='cuda:0')
+        # torch.count_nonzero(dirs)
+        # tensor(189618, device='cuda:0')
+        # torch.count_nonzero(deltas)
+        # tensor(126412, device='cuda:0')
+        # torch.count_nonzero(deltas, dim=0)
+        # tensor([63206, 63206], device='cuda:0')
+        # torch.count_nonzero(xyzs, dim=0)
+        # tensor([63206, 63206, 63206], device='cuda:0')
+        # torch.count_nonzero(dirs, dim=0)
+        # tensor([63206, 63206, 63206], device='cuda:0') # see at the end of the page
 
 march_rays = _march_rays.apply
 
@@ -421,3 +435,87 @@ class _composite_rays(Function):
 
 
 composite_rays = _composite_rays.apply
+
+# nears
+# tensor([2.9392, 2.9389, 2.9386,  ..., 3.0223, 3.0229, 3.0235], device='cuda:0')
+# fars
+# tensor([3.9609, 3.9605, 3.9601,  ..., 4.0729, 4.0737, 4.0745], device='cuda:0')
+# torch.max(nears)
+# tensor(3.0235, device='cuda:0')
+# torch.max(fars)
+# tensor(4.0745, device='cuda:0')
+# torch.argmax(nears)
+# tensor(202499, device='cuda:0')
+# torch.argmax(fars)
+# tensor(202499, device='cuda:0')
+
+# torch.max(xyzs)
+# tensor(0.5779, device='cuda:0')
+# torch.max(dirs)
+# tensor(0.1703, device='cuda:0')
+# torch.max(deltas)
+# tensor(3.8666, device='cuda:0')
+# torch.min(xyzs)
+# tensor(-0.4070, device='cuda:0')
+# torch.min(dirs)
+# tensor(-1.0000, device='cuda:0')
+# torch.min(deltas)
+# tensor(0., device='cuda:0')
+
+# iter = 2
+# torch.count_nonzero(deltas, dim=0)
+# tensor([0, 0], device='cuda:0')
+# torch.count_nonzero(xyzs, dim=0)
+# tensor([0, 0, 0], device='cuda:0')
+# torch.count_nonzero(dirs, dim=0)
+# tensor([0, 0, 0], device='cuda:0')
+# torch.max(xyzs)
+# tensor(0., device='cuda:0')
+# torch.min(xyzs)
+# tensor(0., device='cuda:0')
+# torch.count_nonzero(noises)
+# tensor(0, device='cuda:0')
+
+# iter3:
+# torch.count_nonzero(xyzs, dim=0)
+# tensor([171071, 171071, 171071], device='cuda:0')
+# torch.count_nonzero(deltas, dim=0)
+# tensor([171071, 171071], device='cuda:0')
+# torch.count_nonzero(dirs, dim=0)
+# tensor([171071, 171071, 171071], device='cuda:0')
+# torch.max(xyzs, dim=0)
+# torch.return_types.max(
+# values=tensor([0.5625, 0.1239, 0.4062], device='cuda:0'),
+# indices=tensor([   108, 160260, 118773], device='cuda:0'))
+# torch.max(dirs, dim=0)
+# torch.return_types.max(
+# values=tensor([0.1342, 0.0000, 0.1651], device='cuda:0'),
+# indices=tensor([    75,      0, 101436], device='cuda:0'))
+
+# iter4:
+# torch.count_nonzero(xyzs, dim=0)
+# tensor([152780, 152780, 152780], device='cuda:0')
+# torch.count_nonzero(deltas, dim=0)
+# tensor([152780, 152780], device='cuda:0')
+# torch.count_nonzero(dirs, dim=0)
+# tensor([152780, 152780, 152780], device='cuda:0')
+# torch.max(xyzs, dim=0)
+# torch.return_types.max(
+# values=tensor([0.5611, 0.0433, 0.4055], device='cuda:0'),
+# indices=tensor([     9, 144984, 104811], device='cuda:0'))
+# torch.max(dirs, dim=0)
+# torch.return_types.max(
+# values=tensor([0.1322, 0.0000, 0.1615], device='cuda:0'),
+# indices=tensor([     9,      0, 104811], device='cuda:0'))
+# torch.max(deltas, dim=0)
+# torch.return_types.max(
+# values=tensor([0.0271, 3.9440], device='cuda:0'),
+# indices=tensor([     3, 104811], device='cuda:0'))
+# torch.argmax(deltas)
+# tensor(209623, device='cuda:0')
+# torch.argmax(xyzs)
+# tensor(27, device='cuda:0')
+# torch.argmax(dirs)
+# tensor(314435, device='cuda:0')
+
+
